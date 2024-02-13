@@ -45,6 +45,7 @@
           packages = [
             config.packages.default
             pkgs.lua
+            pkgs.lua-language-server
           ];
 
           enterShell = ''
