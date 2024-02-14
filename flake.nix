@@ -46,6 +46,8 @@
             config.packages.default
             pkgs.lua
             pkgs.lua-language-server
+            pkgs.luaPackages.tl
+            pkgs.luaPackages.teal-language-server
           ];
 
           enterShell = ''
