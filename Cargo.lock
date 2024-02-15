@@ -143,11 +143,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "factorio-prototype"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "factorio-stuff"
 version = "0.1.0"
 dependencies = [
  "anyhow",
  "env_logger",
+ "factorio-prototype",
  "log",
  "serde",
  "serde_json",
