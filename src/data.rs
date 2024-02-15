@@ -175,7 +175,7 @@ pub struct Generator {
     pub minable: Minable,
     pub effectivity: Number,
     pub fluid_usage_per_tick: Number,
-    pub maximum_temperature: Number,
+    pub maximum_temperature: Number<Temperature>,
     pub min_perceived_performance: Number,
     pub fluid_box: FluidBox,
 }
