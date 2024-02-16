@@ -1,4 +1,4 @@
-//! https://lua-api.factorio.com/latest/auxiliary/json-docs-prototype.html
+//! <https://lua-api.factorio.com/latest/auxiliary/json-docs-prototype.html>
 
 // TODO: are type definitions in this crate available in machine readable format?
 
@@ -18,25 +18,25 @@ fn test_prototype_api_parsing() {
 
 /// A string, which can be an identifier for something, or a description-like text formatted in Markdown.
 ///
-/// https://lua-api.factorio.com/latest/auxiliary/json-docs-prototype.html#basic-types
+/// <https://lua-api.factorio.com/latest/auxiliary/json-docs-prototype.html#basic-types>
 #[allow(non_camel_case_types)]
 pub type string = String;
 
 /// A number, which could either be an integer or a floating point number, as JSON doesn't distinguish between those two.
 ///
-/// https://lua-api.factorio.com/latest/auxiliary/json-docs-prototype.html#basic-types
+/// <https://lua-api.factorio.com/latest/auxiliary/json-docs-prototype.html#basic-types>
 #[allow(non_camel_case_types)]
 pub type number = f64;
 
 /// A boolean value, which is either true or false.
 ///
-/// https://lua-api.factorio.com/latest/auxiliary/json-docs-prototype.html#basic-types
+/// <https://lua-api.factorio.com/latest/auxiliary/json-docs-prototype.html#basic-types>
 #[allow(non_camel_case_types)]
 pub type boolean = bool;
 
 /// The format has some top level members indicating the context of the format. These are:
 ///
-/// https://lua-api.factorio.com/latest/auxiliary/json-docs-prototype.html#top-level-members
+/// <https://lua-api.factorio.com/latest/auxiliary/json-docs-prototype.html#top-level-members>
 #[derive(Debug, Deserialize)]
 pub struct PrototypeApi {
     /// The application this documentation is for.
@@ -62,7 +62,7 @@ pub struct PrototypeApi {
 
 /// KEKW theres a typo in the link
 ///
-/// https://lua-api.factorio.com/latest/auxiliary/json-docs-prototype.html#Protoype
+/// <https://lua-api.factorio.com/latest/auxiliary/json-docs-prototype.html#Protoype>
 #[derive(Debug, Deserialize)]
 pub struct Prototype {
     /// The name of the prototype.
@@ -97,7 +97,7 @@ pub struct Prototype {
 
 /// Type/Concept
 ///
-/// https://lua-api.factorio.com/latest/auxiliary/json-docs-prototype.html#Concept
+/// <https://lua-api.factorio.com/latest/auxiliary/json-docs-prototype.html#Concept>
 #[derive(Debug, Deserialize)]
 pub struct ConceptType {
     /// The name of the type.
@@ -126,7 +126,7 @@ pub struct ConceptType {
     pub properties: Option<Vec<Property>>,
 }
 
-/// https://lua-api.factorio.com/latest/auxiliary/json-docs-prototype.html#Property
+/// <https://lua-api.factorio.com/latest/auxiliary/json-docs-prototype.html#Property>
 #[derive(Debug, Deserialize)]
 pub struct Property {
     /// The name of the property.
@@ -161,7 +161,7 @@ pub enum PropertyDefaultValue {
     Literal(Literal),
 }
 
-/// https://lua-api.factorio.com/latest/auxiliary/json-docs-prototype.html#Type
+/// <https://lua-api.factorio.com/latest/auxiliary/json-docs-prototype.html#Type>
 #[derive(Debug, Deserialize)]
 #[serde(untagged)]
 pub enum Type {
@@ -171,7 +171,7 @@ pub enum Type {
     Complex(Box<ComplexType>),
 }
 
-/// https://lua-api.factorio.com/latest/auxiliary/json-docs-prototype.html#Type
+/// <https://lua-api.factorio.com/latest/auxiliary/json-docs-prototype.html#Type>
 #[derive(Debug, Deserialize)]
 #[serde(tag = "complex_type")]
 #[serde(rename_all = "snake_case")]
@@ -207,7 +207,7 @@ pub enum ComplexType {
     Struct,
 }
 
-/// https://lua-api.factorio.com/latest/auxiliary/json-docs-prototype.html#Literal
+/// <https://lua-api.factorio.com/latest/auxiliary/json-docs-prototype.html#Literal>
 #[derive(Debug, Deserialize)]
 #[serde(tag = "complex_type", rename = "literal")]
 pub struct Literal {
@@ -217,7 +217,7 @@ pub struct Literal {
     pub description: Option<string>,
 }
 
-/// https://lua-api.factorio.com/latest/auxiliary/json-docs-prototype.html#Image
+/// <https://lua-api.factorio.com/latest/auxiliary/json-docs-prototype.html#Image>
 #[derive(Debug, Deserialize)]
 pub struct Image {
     /// The name of the image file to display. These files are placed into the `/static/images/` directory.
@@ -226,7 +226,7 @@ pub struct Image {
     pub caption: Option<string>,
 }
 
-/// https://lua-api.factorio.com/latest/auxiliary/json-docs-prototype.html#CustomProperties
+/// <https://lua-api.factorio.com/latest/auxiliary/json-docs-prototype.html#CustomProperties>
 #[derive(Debug, Deserialize)]
 pub struct CustomProperties {
     /// The text description of the property.
