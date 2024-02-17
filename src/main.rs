@@ -2,19 +2,24 @@ mod data;
 mod number;
 use number::Number;
 
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
 
 use data::*;
 
 struct World {
     recipe_mode: RecipeMode,
     data: Arc<Data>,
+    science_multiplier: Number,
     things_used: Vec<Name>,
     pollution: Number,
     total_evolution: f64,
     biters: HashMap<Name, Number>,
     items: HashMap<Name, Number>,
     total_produced: HashMap<Name, Number>,
+    researches: HashSet<Name>,
 }
 
 impl World {
@@ -24,8 +29,9 @@ impl World {
         let data = Data::from_reader(std::io::BufReader::new(std::fs::File::open(
             "data-raw-dump.json",
         )?))?;
-        Ok(Self {
+        let mut this = Self {
             data: Arc::new(data),
+            science_multiplier: Number::new(1000.0),
             things_used: vec![
                 "coal".into(),
                 "burner-mining-drill".into(),
@@ -40,9 +46,13 @@ impl World {
             biters: Default::default(),
             items: Default::default(),
             total_produced: Default::default(),
-        })
+            researches: Default::default(),
+        };
+        this.items.insert(Name::from("coal"), Number::new(1.0));
+        Ok(this)
     }
     fn add_item(&mut self, item: &Name, amount: Number) {
+        log::debug!("{item:?} += {amount:?}");
         *self.items.entry(item.clone()).or_default() += amount;
         if amount > Number::new(0.0) {
             *self.total_produced.entry(item.clone()).or_default() += amount;
@@ -113,7 +123,7 @@ impl World {
         for ingredient in &recipe.ingredients {
             let ingredient_amount = ingredient.amount * amount;
             self.ensure_have(&ingredient.name, ingredient_amount);
-            self.add_item(&ingredient.name, ingredient_amount);
+            self.add_item(&ingredient.name, -ingredient_amount);
         }
         for result in &recipe.results {
             let result_amount = result.amount * amount;
@@ -145,10 +155,6 @@ impl World {
             .resource
             .get(resource_name)
             .unwrap_or_else(|| panic!("resource not found {resource_name:?}"));
-        for result in &resource.minable.results {
-            let result_amount = result.amount * amount;
-            self.add_item(&result.name, result_amount);
-        }
         let category = &resource.category;
         let miner = self
             .things_used
@@ -163,6 +169,10 @@ impl World {
             .unwrap_or_else(|| panic!("no drill for {category:?}"));
         let time = amount * resource.minable.mining_time / miner.mining_speed;
         self.use_energy(&miner.energy_source.clone(), miner.energy_usage, time);
+        for result in &resource.minable.results {
+            let result_amount = result.amount * amount;
+            self.add_item(&result.name, result_amount);
+        }
         log::debug!("Mined {amount:?} of {resource_name:?} in {time:?}");
     }
 
@@ -221,6 +231,32 @@ impl World {
         self.pollute(source.emissions_per_minute / Number::new(60.0) * time);
     }
 
+    fn research(&mut self, name: &Name) {
+        let data = self.data.clone();
+        let technology = &data.technology[name];
+        for dep in &technology.prerequisites {
+            if !self.researches.contains(dep) {
+                self.research(dep);
+            }
+        }
+        let count = match &technology.unit.count {
+            TechnologyCount::Const { count } => *count,
+            TechnologyCount::Formula { count_formula } => todo!(),
+        };
+        let count = if technology.ignore_tech_cost_multiplier {
+            count
+        } else {
+            count * self.science_multiplier
+        };
+        for ingredient in &technology.unit.ingredients {
+            let amount = ingredient.amount * count;
+            self.ensure_have(&ingredient.name, amount);
+            self.add_item(&ingredient.name, -amount);
+        }
+        self.researches.insert(name.clone());
+        log::debug!("Researched {name:?}");
+    }
+
     fn pollute(&mut self, pollution: Number) {
         log::debug!("Made {pollution:?} pollution");
         self.pollution += pollution;
@@ -244,35 +280,10 @@ fn main() -> anyhow::Result<()> {
 
     let mut world = World::new()?;
 
-    for science in [
-        10,     // auto
-        10_000, // turret
-        10_000, // mil 1
-        75_000, // green science
-        50_000, // steel
-        10_000, // wall
-        30_000, // electro
-    ] {
-        world.craft(
-            &Name::from("automation-science-pack"),
-            Number::new(science as f64),
-        );
-    }
+    world.research(&"gun-turret".into());
+    world.research(&"logistics".into());
+    world.research(&"flamethrower".into());
 
-    for science in [
-        20,  // mil 2
-        30,  // mil science
-        40,  // auto 2
-        50,  // fluid
-        100, // oil
-        50,  // flamable
-        50,  // flamethrower
-    ] {
-        let science = science as f64 * 1000.0;
-        world.craft(&Name::from("automation-science-pack"), Number::new(science));
-        world.craft(&Name::from("logistic-science-pack"), Number::new(science));
-    }
-    world.craft(&Name::from("military-science-pack"), Number::new(50_000.0));
     log::info!("evolution = {:.1}%", world.evolution() * 100.0);
 
     Ok(())

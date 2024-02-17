@@ -21,6 +21,10 @@ pub fn parse(value: &str) -> anyhow::Result<f64> {
 }
 
 pub fn write(fmt: &mut std::fmt::Formatter<'_>, value: f64) -> std::fmt::Result {
+    if value < 0.0 {
+        write!(fmt, "-")?;
+    }
+    let value = value.abs();
     let mut write_value = |value: f64| -> std::fmt::Result { write!(fmt, "{:.1}", value) };
     for (suffix, suffix_multiplier) in MULTIPLIERS.into_iter().rev() {
         if value > 0.5 * suffix_multiplier {
@@ -39,6 +43,7 @@ enum StringOrNumber {
 }
 
 pub trait NumberType {
+    const PARSE_SUFFIX: bool = true;
     const SUFFIX: Option<&'static str>;
 }
 
@@ -81,7 +86,7 @@ impl<T: NumberType> TryFrom<StringOrNumber> for Number<T> {
         let value = match value {
             StringOrNumber::String(value) => {
                 let mut value = value.as_str();
-                if let Some(suffix) = T::SUFFIX {
+                if let Some(suffix) = T::SUFFIX.filter(|_| T::PARSE_SUFFIX) {
                     value = value
                         .strip_suffix(suffix)
                         .ok_or(anyhow!("Value should end with {suffix:?}"))?;
@@ -89,7 +94,7 @@ impl<T: NumberType> TryFrom<StringOrNumber> for Number<T> {
                 parse(value)?
             }
             StringOrNumber::Number(number) => {
-                if let Some(suffix) = T::SUFFIX {
+                if let Some(suffix) = T::SUFFIX.filter(|_| T::PARSE_SUFFIX) {
                     anyhow::bail!("Expected a string with {suffix:?} suffix");
                 }
                 number
@@ -106,6 +111,13 @@ impl<T: NumberType> std::fmt::Debug for Number<T> {
             write!(f, "{suffix}")?;
         }
         Ok(())
+    }
+}
+
+impl<T: NumberType> std::ops::Neg for Number<T> {
+    type Output = Self;
+    fn neg(self) -> Self::Output {
+        Self::new(-self.value)
     }
 }
 

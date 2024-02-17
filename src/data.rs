@@ -50,6 +50,13 @@ impl NumberType for () {
     const SUFFIX: Option<&'static str> = None;
 }
 
+pub struct Seconds;
+
+impl NumberType for Seconds {
+    const PARSE_SUFFIX: bool = false;
+    const SUFFIX: Option<&'static str> = Some("s");
+}
+
 pub struct Joules;
 
 impl NumberType for Joules {
@@ -65,7 +72,8 @@ impl NumberType for Watts {
 pub struct Temperature;
 
 impl NumberType for Temperature {
-    const SUFFIX: Option<&'static str> = None;
+    const PARSE_SUFFIX: bool = false;
+    const SUFFIX: Option<&'static str> = Some("°");
 }
 
 #[derive(Debug, Deserialize)]
@@ -156,6 +164,32 @@ pub struct MiningDrill {
 pub struct FluidBox {
     pub minimum_temperature: Option<Number>,
     pub filter: Name,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+pub enum TechnologyCount {
+    Const { count: Number },
+    Formula { count_formula: String },
+}
+
+#[derive(Debug, Deserialize)]
+pub struct TechnologyUnit {
+    #[serde(flatten)]
+    pub count: TechnologyCount,
+    pub time: Number<Seconds>,
+    #[serde(deserialize_with = "deserialize_item_list")]
+    pub ingredients: Vec<AmountOf>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Technology {
+    pub name: Name,
+    pub unit: TechnologyUnit,
+    #[serde(default)]
+    pub prerequisites: Vec<Name>,
+    #[serde(default)]
+    pub ignore_tech_cost_multiplier: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -520,7 +554,7 @@ pub enum EntityType {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "kebab-case", tag = "type")]
-pub enum Entity {
+pub enum Prototype {
     Item(Item),
     Tile(Tile),
     Fluid(Fluid),
@@ -531,6 +565,7 @@ pub enum Entity {
     Furnace(AssemblingMachine),
     Generator(Generator),
     Boiler(Boiler),
+    Technology(Technology),
     #[serde(other)]
     Other,
 }
@@ -546,47 +581,51 @@ pub struct Data {
     pub assembling_machine: HashMap<Name, AssemblingMachine>,
     pub generator: HashMap<Name, Generator>,
     pub boiler: HashMap<Name, Boiler>,
+    pub technology: HashMap<Name, Technology>,
     pub other: HashMap<EntityType, HashSet<Name>>,
 }
 
 impl Data {
     pub fn from_reader(reader: impl std::io::Read) -> anyhow::Result<Self> {
-        let raw: HashMap<EntityType, HashMap<Name, Entity>> = serde_json::from_reader(reader)?;
+        let raw: HashMap<EntityType, HashMap<Name, Prototype>> = serde_json::from_reader(reader)?;
         let mut data = Self::default();
-        for (entity_type, entities) in raw {
-            for (name, entity) in entities {
-                match entity {
-                    Entity::Item(item) => {
+        for (entity_type, prototypes) in raw {
+            for (name, prototype) in prototypes {
+                match prototype {
+                    Prototype::Item(item) => {
                         data.item.insert(name, item);
                     }
-                    Entity::Tile(tile) => {
+                    Prototype::Tile(tile) => {
                         data.tile.insert(name, tile);
                     }
-                    Entity::Fluid(fluid) => {
+                    Prototype::Fluid(fluid) => {
                         data.fluid.insert(name, fluid);
                     }
-                    Entity::Recipe(recipe) => {
+                    Prototype::Recipe(recipe) => {
                         data.recipe.insert(name, recipe);
                     }
-                    Entity::Resource(resource) => {
+                    Prototype::Resource(resource) => {
                         data.resource.insert(name, resource);
                     }
-                    Entity::MiningDrill(mining_drill) => {
+                    Prototype::MiningDrill(mining_drill) => {
                         data.mining_drill.insert(name, mining_drill);
                     }
-                    Entity::AssemblingMachine(assembling_machine) => {
+                    Prototype::AssemblingMachine(assembling_machine) => {
                         data.assembling_machine.insert(name, assembling_machine);
                     }
-                    Entity::Furnace(furnace) => {
+                    Prototype::Furnace(furnace) => {
                         data.assembling_machine.insert(name, furnace);
                     }
-                    Entity::Generator(generator) => {
+                    Prototype::Generator(generator) => {
                         data.generator.insert(name, generator);
                     }
-                    Entity::Boiler(boiler) => {
+                    Prototype::Boiler(boiler) => {
                         data.boiler.insert(name, boiler);
                     }
-                    Entity::Other => {
+                    Prototype::Technology(technology) => {
+                        data.technology.insert(name, technology);
+                    }
+                    Prototype::Other => {
                         data.other.entry(entity_type).or_default().insert(name);
                     }
                 }
