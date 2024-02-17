@@ -15,11 +15,13 @@ struct World {
     science_multiplier: Number,
     things_used: Vec<Name>,
     pollution: Number,
+    pollution_evolution: f64,
     total_evolution: f64,
     biters: HashMap<Name, Number>,
     items: HashMap<Name, Number>,
     total_produced: HashMap<Name, Number>,
     researches: HashSet<Name>,
+    pollution_evolution_ratio: f64,
 }
 
 impl World {
@@ -34,7 +36,8 @@ impl World {
             science_multiplier: Number::new(1000.0),
             things_used: vec![
                 "coal".into(),
-                "burner-mining-drill".into(),
+                // "burner-mining-drill".into(),
+                "electric-mining-drill".into(),
                 "stone-furnace".into(),
                 "assembling-machine-1".into(),
                 "steam-engine".into(),
@@ -45,8 +48,11 @@ impl World {
             pollution: Number::new(0.0),
             biters: Default::default(),
             items: Default::default(),
+            pollution_evolution: 0.0,
             total_produced: Default::default(),
             researches: Default::default(),
+            // pollution_evolution_ratio: 0.82,
+            pollution_evolution_ratio: 1.0,
         };
         this.items.insert(Name::from("coal"), Number::new(1.0));
         Ok(this)
@@ -260,11 +266,29 @@ impl World {
     fn pollute(&mut self, pollution: Number) {
         log::debug!("Made {pollution:?} pollution");
         self.pollution += pollution;
-        self.total_evolution += pollution.value() * 9e-07; // TODO map_settings
+        const POLLUTION_FACTOR: f64 = 9e-07; // TODO map_settings
+        let evolution = pollution.value() * POLLUTION_FACTOR;
+        self.pollution_evolution += evolution;
+        self.total_evolution += evolution;
     }
 
     fn evolution(&self) -> f64 {
-        self.total_evolution / (1.0 + self.total_evolution)
+        let total_evolution = self.total_evolution / self.pollution_evolution_ratio;
+        total_evolution / (1.0 + total_evolution)
+    }
+
+    fn report_evolution(&self) {
+        log::info!("evolution = {:.1}%", self.evolution() * 100.0);
+        const TIME_FACTOR: f64 = 0.000004; // TODO map_settings
+        const DESTROY_FACTOR: f64 = 0.002; // TODO map_settings
+        log::info!(
+            "time = {:?}",
+            self.total_evolution / 0.82 * 0.04 / TIME_FACTOR
+        );
+        log::info!(
+            "killed nests = {:?}",
+            self.total_evolution / 0.82 * 0.14 / DESTROY_FACTOR
+        );
     }
 }
 
@@ -281,10 +305,13 @@ fn main() -> anyhow::Result<()> {
     let mut world = World::new()?;
 
     world.research(&"gun-turret".into());
+    world.craft(&"gun-turret".into(), Number::new(1000.0));
+    world.craft(&"assembling-machine-1".into(), Number::new(1000.0));
     world.research(&"logistics".into());
-    world.research(&"flamethrower".into());
+    // world.research(&"flamethrower".into());
+    world.research(&"land-mine".into());
 
-    log::info!("evolution = {:.1}%", world.evolution() * 100.0);
+    world.report_evolution();
 
     Ok(())
 }
