@@ -8,8 +8,6 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-factorio-prototypes = { path = "factorio-prototypes" }
-factorio-prototype-api = { path = "factorio-prototype-api" }
 anyhow = { version = "1.0.79", features = ["backtrace"] }
 env_logger = "0.11.2"
 log = "0.4.20"

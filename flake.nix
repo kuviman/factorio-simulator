@@ -23,10 +23,6 @@
               {
                 extensions = [ "rust-src" ];
               })
-            lua
-            lua-language-server
-            luaPackages.tl
-            luaPackages.teal-language-server
             jq
           ];
 
