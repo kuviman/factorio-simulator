@@ -1,4 +1,4 @@
-recipe-mode expensive
+# recipe-mode expensive
 science-multiplier 1k
 
 use coal
