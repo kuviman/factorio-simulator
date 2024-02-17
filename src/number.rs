@@ -78,6 +78,9 @@ impl<T: NumberType> Number<T> {
     pub fn value(&self) -> f64 {
         self.value
     }
+    pub fn ceil(&self) -> Self {
+        Self::new(self.value.ceil())
+    }
 }
 
 impl<T: NumberType> TryFrom<StringOrNumber> for Number<T> {

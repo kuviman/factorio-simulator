@@ -13,15 +13,15 @@ struct World {
     recipe_mode: RecipeMode,
     data: Arc<Data>,
     science_multiplier: Number,
-    things_used: Vec<Name>,
+    things_used: HashSet<Name>,
     pollution: Number,
-    pollution_evolution: f64,
-    total_evolution: f64,
     biters: HashMap<Name, Number>,
     items: HashMap<Name, Number>,
     total_produced: HashMap<Name, Number>,
     researches: HashSet<Name>,
     pollution_evolution_ratio: f64,
+    time: Number<Seconds>,
+    kills: Number,
 }
 
 impl World {
@@ -33,28 +33,20 @@ impl World {
         )?))?;
         let mut this = Self {
             data: Arc::new(data),
-            science_multiplier: Number::new(1000.0),
-            things_used: vec![
-                "coal".into(),
-                // "burner-mining-drill".into(),
-                "electric-mining-drill".into(),
-                "stone-furnace".into(),
-                "assembling-machine-1".into(),
-                "steam-engine".into(),
-                "boiler".into(),
-            ],
+            science_multiplier: Number::new(1.0),
+            things_used: HashSet::new(),
             recipe_mode: RecipeMode::Normal,
-            total_evolution: 0.0,
             pollution: Number::new(0.0),
             biters: Default::default(),
             items: Default::default(),
-            pollution_evolution: 0.0,
             total_produced: Default::default(),
             researches: Default::default(),
             // pollution_evolution_ratio: 0.82,
             pollution_evolution_ratio: 1.0,
+            time: Number::new(0.0),
+            kills: Number::new(0.0),
         };
-        this.items.insert(Name::from("coal"), Number::new(1.0));
+        this.items.insert(Name::from("wood"), Number::new(1.0));
         Ok(this)
     }
     fn add_item(&mut self, item: &Name, amount: Number) {
@@ -266,28 +258,30 @@ impl World {
     fn pollute(&mut self, pollution: Number) {
         log::debug!("Made {pollution:?} pollution");
         self.pollution += pollution;
-        const POLLUTION_FACTOR: f64 = 9e-07; // TODO map_settings
-        let evolution = pollution.value() * POLLUTION_FACTOR;
-        self.pollution_evolution += evolution;
-        self.total_evolution += evolution;
     }
 
-    fn evolution(&self) -> f64 {
-        let total_evolution = self.total_evolution / self.pollution_evolution_ratio;
-        total_evolution / (1.0 + total_evolution)
+    fn sleep(&mut self, seconds: Number<Seconds>) {
+        self.time += seconds;
     }
 
     fn report_evolution(&self) {
-        log::info!("evolution = {:.1}%", self.evolution() * 100.0);
-        const TIME_FACTOR: f64 = 0.000004; // TODO map_settings
+        // TODO map_settings
+        const POLLUTION_FACTOR: f64 = 9e-07;
+        const TIME_FACTOR: f64 = 0.000004;
         const DESTROY_FACTOR: f64 = 0.002; // TODO map_settings
+
+        let pollution = self.pollution.value() * POLLUTION_FACTOR;
+        let time = self.time.value() * TIME_FACTOR;
+        let kills = self.kills.value() * DESTROY_FACTOR;
+
+        let total_evolution = pollution + time + kills;
+        let evolution = total_evolution / (1.0 + total_evolution);
         log::info!(
-            "time = {:?}",
-            self.total_evolution / 0.82 * 0.04 / TIME_FACTOR
-        );
-        log::info!(
-            "killed nests = {:?}",
-            self.total_evolution / 0.82 * 0.14 / DESTROY_FACTOR
+            "evolution = {:.1}% ({:.0}% time, {:.0}% pollution, {:.0}% kills)",
+            evolution * 100.0,
+            time / total_evolution * 100.0,
+            pollution / total_evolution * 100.0,
+            kills / total_evolution * 100.0,
         );
     }
 }
@@ -304,14 +298,85 @@ fn main() -> anyhow::Result<()> {
 
     let mut world = World::new()?;
 
-    world.research(&"gun-turret".into());
-    world.craft(&"gun-turret".into(), Number::new(1000.0));
-    world.craft(&"assembling-machine-1".into(), Number::new(1000.0));
-    world.research(&"logistics".into());
-    // world.research(&"flamethrower".into());
-    world.research(&"land-mine".into());
-
-    world.report_evolution();
-
+    for line in std::io::stdin().lines() {
+        let line = line.expect("Failed to read line");
+        if line.starts_with('#') {
+            // comment
+            continue;
+        }
+        let mut parts = line.split_whitespace();
+        let Some(command) = parts.next() else {
+            continue;
+        };
+        match command {
+            "recipe-mode" => {
+                let Some(mode) = parts.next() else {
+                    log::error!("Expected mode arg");
+                    continue;
+                };
+                world.recipe_mode = serde_json::from_str(&format!("{mode:?}")).unwrap();
+            }
+            "research" => {
+                let Some(tech) = parts.next() else {
+                    log::error!("Expected technology arg");
+                    continue;
+                };
+                let tech = tech.into();
+                if !world.data.technology.contains_key(&tech) {
+                    log::error!("Unknown technology {tech:?}");
+                    continue;
+                }
+                world.research(&tech);
+            }
+            "science-multiplier" => {
+                let multiplier: f64 = number::parse(parts.next().unwrap()).unwrap();
+                world.science_multiplier = Number::new(multiplier);
+            }
+            "use" => {
+                let thing = parts.next().unwrap();
+                world.things_used.insert(thing.into());
+            }
+            "sleep" => {
+                let time = parts.next().unwrap();
+                let mut seconds: f64 = 0.0;
+                for part in time.split(':') {
+                    seconds = seconds * 60.0 + part.parse::<f64>().unwrap();
+                }
+                world.sleep(Number::new(seconds));
+            }
+            "kill-nests" => {
+                let number = number::parse(parts.next().unwrap()).unwrap();
+                world.kills += Number::new(number);
+            }
+            "produce" => {
+                let Some(item) = parts.next() else {
+                    log::error!("Expected item arg");
+                    continue;
+                };
+                let item = item.into();
+                if !world.data.item.contains_key(&item) {
+                    log::error!("Unknown item {item:?}");
+                    continue;
+                }
+                let Some(amount) = parts.next() else {
+                    log::error!("Expected amount arg");
+                    continue;
+                };
+                match number::parse(amount) {
+                    Ok(amount) => {
+                        world.produce(&item, Number::new(amount));
+                    }
+                    Err(e) => {
+                        log::error!("Failed to parse amount: {e}");
+                        continue;
+                    }
+                }
+            }
+            "/evolution" => {
+                world.report_evolution();
+            }
+            _ => log::error!("Unknown command {command:?}"),
+        }
+    }
     Ok(())
 }

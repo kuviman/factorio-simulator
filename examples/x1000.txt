@@ -1,0 +1,18 @@
+recipe-mode expensive
+science-multiplier 1k
+
+use coal
+use stone-furnace
+use electric-mining-drill
+use assembling-machine-1
+use boiler
+use steam-engine
+
+research gun-turret
+research logistics
+research flamethrower
+
+sleep 30:00:00
+kill-nests 1000
+
+/evolution
