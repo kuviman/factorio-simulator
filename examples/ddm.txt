@@ -1,0 +1,16 @@
+preset death-world-marathon
+
+use coal
+use stone-furnace
+use burner-mining-drill
+use assembling-machine-1
+use boiler
+use steam-engine
+use firearm-magazine
+
+research gun-turret
+research automation
+
+sleep 5:00
+
+/evolution
