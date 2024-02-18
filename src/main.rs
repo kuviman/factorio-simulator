@@ -10,16 +10,15 @@ use std::{
 use data::*;
 
 struct World {
+    map_settings: MapSettings,
     recipe_mode: RecipeMode,
     data: Arc<Data>,
-    science_multiplier: Number,
     things_used: HashSet<Name>,
     pollution: Number,
     biters: HashMap<Name, Number>,
     items: HashMap<Name, Number>,
     total_produced: HashMap<Name, Number>,
     researches: HashSet<Name>,
-    pollution_evolution_ratio: f64,
     time: Number<Seconds>,
     kills: Number,
 }
@@ -32,8 +31,8 @@ impl World {
             "data-raw-dump.json",
         )?))?;
         let mut this = Self {
+            map_settings: data.map_settings.clone(),
             data: Arc::new(data),
-            science_multiplier: Number::new(1.0),
             things_used: HashSet::new(),
             recipe_mode: RecipeMode::Normal,
             pollution: Number::new(0.0),
@@ -41,8 +40,6 @@ impl World {
             items: Default::default(),
             total_produced: Default::default(),
             researches: Default::default(),
-            // pollution_evolution_ratio: 0.82,
-            pollution_evolution_ratio: 1.0,
             time: Number::new(0.0),
             kills: Number::new(0.0),
         };
@@ -244,7 +241,12 @@ impl World {
         let count = if technology.ignore_tech_cost_multiplier {
             count
         } else {
-            count * self.science_multiplier
+            count
+                * self
+                    .map_settings
+                    .difficulty_settings
+                    .technology_price_multiplier
+                    .unwrap()
         };
         for ingredient in &technology.unit.ingredients {
             let amount = ingredient.amount * count;
@@ -265,14 +267,10 @@ impl World {
     }
 
     fn report_evolution(&self) {
-        // TODO map_settings
-        const POLLUTION_FACTOR: f64 = 9e-07;
-        const TIME_FACTOR: f64 = 0.000004;
-        const DESTROY_FACTOR: f64 = 0.002; // TODO map_settings
-
-        let pollution = self.pollution.value() * POLLUTION_FACTOR;
-        let time = self.time.value() * TIME_FACTOR;
-        let kills = self.kills.value() * DESTROY_FACTOR;
+        let pollution =
+            self.pollution.value() * self.map_settings.enemy_evolution.pollution_factor.unwrap();
+        let time = self.time.value() * self.map_settings.enemy_evolution.time_factor.unwrap();
+        let kills = self.kills.value() * self.map_settings.enemy_evolution.destroy_factor.unwrap();
 
         let total_evolution = pollution + time + kills;
         let evolution = total_evolution / (1.0 + total_evolution);
@@ -328,9 +326,61 @@ fn main() -> anyhow::Result<()> {
                 }
                 world.research(&tech);
             }
+            "preset" => {
+                let preset = Name::from(parts.next().unwrap());
+                let preset = &world.data.map_gen_presets[&preset];
+                if let Some(diff) = preset
+                    .advanced_settings
+                    .difficulty_settings
+                    .recipe_difficulty
+                {
+                    if diff == 1 {
+                        world.recipe_mode = RecipeMode::Expensive;
+                    }
+                }
+                if let Some(multiplier) = preset
+                    .advanced_settings
+                    .difficulty_settings
+                    .technology_price_multiplier
+                {
+                    world
+                        .map_settings
+                        .difficulty_settings
+                        .technology_price_multiplier
+                        .replace(multiplier);
+                }
+                if let Some(time_factor) = preset.advanced_settings.enemy_evolution.time_factor {
+                    world
+                        .map_settings
+                        .enemy_evolution
+                        .time_factor
+                        .replace(time_factor);
+                }
+                if let Some(pollution_factor) =
+                    preset.advanced_settings.enemy_evolution.pollution_factor
+                {
+                    world
+                        .map_settings
+                        .enemy_evolution
+                        .pollution_factor
+                        .replace(pollution_factor);
+                }
+                if let Some(destroy_factor) =
+                    preset.advanced_settings.enemy_evolution.destroy_factor
+                {
+                    world
+                        .map_settings
+                        .enemy_evolution
+                        .destroy_factor
+                        .replace(destroy_factor);
+                }
+            }
             "science-multiplier" => {
                 let multiplier: f64 = number::parse(parts.next().unwrap()).unwrap();
-                world.science_multiplier = Number::new(multiplier);
+                world
+                    .map_settings
+                    .difficulty_settings
+                    .technology_price_multiplier = Some(Number::new(multiplier));
             }
             "use" => {
                 let thing = parts.next().unwrap();

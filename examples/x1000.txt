@@ -1,4 +1,4 @@
-# recipe-mode expensive
+#preset death-world-marathon
 science-multiplier 1k
 
 use coal
@@ -9,6 +9,7 @@ use boiler
 use steam-engine
 
 research gun-turret
+#research physical-projectile-damage-2
 research logistics
 research flamethrower
 

@@ -182,6 +182,32 @@ pub struct TechnologyUnit {
     pub ingredients: Vec<AmountOf>,
 }
 
+#[derive(Default, Debug, Deserialize, Clone)]
+pub struct EnemyEvolutionSettings {
+    pub time_factor: Option<f64>,
+    pub destroy_factor: Option<f64>,
+    pub pollution_factor: Option<f64>,
+}
+
+#[derive(Default, Debug, Deserialize, Clone)]
+pub struct DifficultySettings {
+    pub recipe_difficulty: Option<usize>,
+    pub technology_price_multiplier: Option<Number>,
+}
+
+#[derive(Default, Debug, Deserialize)]
+#[serde(default)]
+pub struct MapGenPresetAdvancedSettings {
+    pub enemy_evolution: EnemyEvolutionSettings,
+    pub difficulty_settings: DifficultySettings,
+}
+
+#[derive(Default, Debug, Deserialize)]
+#[serde(default)]
+pub struct MapGenPreset {
+    pub advanced_settings: MapGenPresetAdvancedSettings,
+}
+
 #[derive(Debug, Deserialize)]
 pub struct Technology {
     pub name: Name,
@@ -553,6 +579,19 @@ pub enum EntityType {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct MapGenPresets {
+    name: Name,
+    #[serde(flatten)]
+    presets: HashMap<Name, MapGenPreset>,
+}
+
+#[derive(Debug, Deserialize, Default, Clone)]
+pub struct MapSettings {
+    pub enemy_evolution: EnemyEvolutionSettings,
+    pub difficulty_settings: DifficultySettings,
+}
+
+#[derive(Debug, Deserialize)]
 #[serde(rename_all = "kebab-case", tag = "type")]
 pub enum Prototype {
     Item(Item),
@@ -566,6 +605,8 @@ pub enum Prototype {
     Generator(Generator),
     Boiler(Boiler),
     Technology(Technology),
+    MapGenPresets(MapGenPresets),
+    MapSettings(MapSettings),
     #[serde(other)]
     Other,
 }
@@ -582,6 +623,8 @@ pub struct Data {
     pub generator: HashMap<Name, Generator>,
     pub boiler: HashMap<Name, Boiler>,
     pub technology: HashMap<Name, Technology>,
+    pub map_gen_presets: HashMap<Name, MapGenPreset>,
+    pub map_settings: MapSettings,
     pub other: HashMap<EntityType, HashSet<Name>>,
 }
 
@@ -624,6 +667,12 @@ impl Data {
                     }
                     Prototype::Technology(technology) => {
                         data.technology.insert(name, technology);
+                    }
+                    Prototype::MapGenPresets(map_gen_presets) => {
+                        data.map_gen_presets = map_gen_presets.presets;
+                    }
+                    Prototype::MapSettings(map_settings) => {
+                        data.map_settings = map_settings;
                     }
                     Prototype::Other => {
                         data.other.entry(entity_type).or_default().insert(name);
