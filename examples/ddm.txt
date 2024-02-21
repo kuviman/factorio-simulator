@@ -10,7 +10,8 @@ use firearm-magazine
 
 research gun-turret
 research automation
+research electric-energy-distribution-1
 
-sleep 5:00
+sleep 5:00:00
 
 /evolution
