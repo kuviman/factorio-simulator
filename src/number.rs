@@ -20,7 +20,7 @@ pub fn parse(value: &str) -> anyhow::Result<f64> {
     Ok(value.parse::<f64>()? * multiplier)
 }
 
-pub fn write(fmt: &mut std::fmt::Formatter<'_>, value: f64) -> std::fmt::Result {
+pub fn write_untyped(fmt: &mut std::fmt::Formatter<'_>, value: f64) -> std::fmt::Result {
     if value < 0.0 {
         write!(fmt, "-")?;
     }
@@ -45,6 +45,13 @@ enum StringOrNumber {
 pub trait NumberType {
     const PARSE_SUFFIX: bool = true;
     const SUFFIX: Option<&'static str>;
+    fn write(fmt: &mut std::fmt::Formatter<'_>, value: f64) -> std::fmt::Result {
+        write_untyped(fmt, value)?;
+        if let Some(suffix) = Self::SUFFIX {
+            write!(fmt, "{suffix}")?;
+        }
+        Ok(())
+    }
 }
 
 #[derive(Deserialize)]
@@ -101,6 +108,12 @@ impl<T: NumberType> Number<T> {
     pub fn ceil(&self) -> Self {
         Self::new(self.value.ceil())
     }
+    pub fn convert<U: NumberType>(self) -> Number<U> {
+        Number {
+            value: self.value,
+            phantom_data: PhantomData,
+        }
+    }
 }
 
 impl<T: NumberType> TryFrom<StringOrNumber> for Number<T> {
@@ -129,11 +142,7 @@ impl<T: NumberType> TryFrom<StringOrNumber> for Number<T> {
 
 impl<T: NumberType> std::fmt::Debug for Number<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write(f, self.value)?;
-        if let Some(suffix) = T::SUFFIX {
-            write!(f, "{suffix}")?;
-        }
-        Ok(())
+        T::write(f, self.value)
     }
 }
 

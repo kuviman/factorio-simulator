@@ -4,7 +4,7 @@ use std::{
 };
 
 use crate::{
-    data::{EnergyType, FuelCategory, RecipeMode, UPS},
+    data::{EnergyType, FuelCategory, RecipeMode, Seconds, UPS},
     number::Number,
 };
 
@@ -86,14 +86,14 @@ pub struct Factory {
 pub struct Planner {
     data: Arc<Data>,
     factory: Factory,
-    time: Number,
+    time: Number<Seconds>,
     cached_recipe_for: HashMap<Item, Arc<str>>,
 }
 
 #[derive(Debug, Default)]
 struct Plan {
     crafts: HashMap<Arc<str>, Number>,
-    single_machine_time: HashMap<Arc<str>, Number>,
+    single_machine_time: HashMap<Arc<str>, Number<Seconds>>,
 }
 
 impl Planner {
@@ -482,13 +482,13 @@ impl Planner {
             }
         }
 
-        log::info!("{data:#?}");
+        log::trace!("{data:#?}");
 
         Ok(Self {
             data: Arc::new(data),
             factory,
             cached_recipe_for: Default::default(),
-            time: 0.into(),
+            time: Number::new(0.0),
         })
     }
 
@@ -534,7 +534,7 @@ impl Planner {
         let mut plan = Plan::default();
         f(self, &mut plan);
         let mut done = false;
-        let mut total_times = HashMap::<Arc<str>, Number>::new();
+        let mut total_times = HashMap::<Arc<str>, Number<Seconds>>::new();
         while !done {
             done = true;
             for (machine_name, single_machine_time) in std::mem::take(&mut plan.single_machine_time)
@@ -542,7 +542,7 @@ impl Planner {
                 *total_times.entry(machine_name.clone()).or_default() += single_machine_time;
                 let machine = &data.machines[&machine_name];
                 for (energy_item, &usage) in &machine.energy_usage {
-                    let energy_amount = usage * single_machine_time;
+                    let energy_amount = usage * single_machine_time.convert::<()>();
                     if energy_amount.value() < 1e-5 {
                         continue;
                     }
@@ -554,10 +554,11 @@ impl Planner {
         log::debug!("PLAN:");
         log::debug!("Crafts: {:#?}", plan.crafts);
 
-        let times: HashMap<Arc<str>, Number> = total_times
+        let times: HashMap<Arc<str>, Number<Seconds>> = total_times
             .into_iter()
             .map(|(machine, single_machine_time)| {
-                let time = single_machine_time / self.factory.machines[&machine];
+                let time =
+                    single_machine_time / self.factory.machines[&machine].convert::<Seconds>();
                 (machine, time)
             })
             .collect();
@@ -565,14 +566,16 @@ impl Planner {
         let total_time = times.into_values().max().unwrap();
         log::debug!("Plan total time: {total_time:?}");
         self.time += total_time;
-        log::debug!("Time now is {:?}", self.time);
+        log::info!("Time now is {:?}", self.time);
     }
 
     pub fn craft(&mut self, item: impl Into<Item>, amount: impl Into<Number>) {
         let item = item.into();
         let amount = amount.into();
 
-        self.with_plan(|this, plan| this.plan_craft(item, amount, plan));
+        self.with_plan(|this, plan| this.plan_craft(item.clone(), amount, plan));
+
+        log::info!("Crafted {amount:?} of {item:?}");
     }
     fn plan_craft(&mut self, item: Item, amount: Number, plan: &mut Plan) {
         let recipe = self.recipe_for(item.clone());
@@ -625,7 +628,7 @@ impl Planner {
                 *plan
                     .single_machine_time
                     .entry(machine_name.clone())
-                    .or_default() += single_machine_time;
+                    .or_default() += single_machine_time.convert::<Seconds>();
             }
         }
     }
@@ -658,7 +661,7 @@ impl Planner {
             .entry(machine_name.clone())
             .or_default() += amount;
         self.cached_recipe_for.clear();
-        log::debug!("built {amount:?} of {machine_name:?}");
+        log::info!("built {amount:?} of {machine_name:?}");
     }
 
     pub fn research(&mut self, research: impl Into<Arc<str>>) {
@@ -675,5 +678,6 @@ impl Planner {
         self.with_plan(|this, plan| {
             this.plan_craft_recipe(format!("research {:?}", research.name), 1.into(), plan);
         });
+        log::info!("researched {:?}", research.name);
     }
 }

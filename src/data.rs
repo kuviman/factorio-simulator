@@ -61,6 +61,25 @@ pub struct Seconds;
 impl NumberType for Seconds {
     const PARSE_SUFFIX: bool = false;
     const SUFFIX: Option<&'static str> = Some("s");
+    fn write(fmt: &mut std::fmt::Formatter<'_>, value: f64) -> std::fmt::Result {
+        if value < 5.0 {
+            write!(fmt, "{value:.1}s")?;
+        } else {
+            let seconds = value as i64;
+            let minutes = seconds / 60;
+            let seconds = seconds % 60;
+            let hours = minutes / 60;
+            let minutes = minutes % 60;
+            if hours != 0 {
+                write!(fmt, "{hours}h ")?;
+            }
+            if minutes != 0 {
+                write!(fmt, "{minutes}m ")?;
+            }
+            write!(fmt, "{seconds}s")?;
+        }
+        Ok(())
+    }
 }
 
 pub struct Joules;
