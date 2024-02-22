@@ -19,7 +19,6 @@ fn main() -> anyhow::Result<()> {
 
     let mut world = smart::World::new(data::RecipeMode::Normal, 1)?;
 
-    let mut tasks = Tasks::default();
     for line in std::io::stdin().lines() {
         let line = line.expect("Failed to read line");
         if line.starts_with('#') {
@@ -37,6 +36,11 @@ fn main() -> anyhow::Result<()> {
                 let item = parts.next().unwrap();
                 world.prefer_fuel(category, item);
             }
+            "place" => {
+                let machine = parts.next().unwrap();
+                let amount: Number = parts.next().unwrap_or("1").parse().unwrap();
+                *world.machines.entry(machine.into()).or_default() += amount;
+            }
             "build" => {
                 let machine = parts.next().unwrap();
                 let amount: Number = parts.next().unwrap_or("1").parse().unwrap();
@@ -47,19 +51,7 @@ fn main() -> anyhow::Result<()> {
                 let amount: Number = parts.next().unwrap_or("1").parse().unwrap();
                 world.craft(item, amount);
             }
-            "flush" => {
-                world
-                    .planner()
-                    .add_tasks(std::mem::take(&mut tasks))
-                    .think()
-                    .execute(&mut world);
-            }
             "research" => {
-                world
-                    .planner()
-                    .add_tasks(std::mem::take(&mut tasks))
-                    .think()
-                    .execute(&mut world);
                 let research = parts.next().unwrap();
                 world.research(research);
             }
