@@ -16,7 +16,7 @@ fn main() -> anyhow::Result<()> {
         .parse_default_env()
         .init();
 
-    let mut planner = smart::Planner::new(data::RecipeMode::Normal, 1)?;
+    let mut world = smart::World::new(data::RecipeMode::Normal, 1)?;
 
     for line in std::io::stdin().lines() {
         let line = line.expect("Failed to read line");
@@ -33,25 +33,25 @@ fn main() -> anyhow::Result<()> {
                 let category: FuelCategory =
                     serde_json::from_str(&format!("{:?}", parts.next().unwrap())).unwrap();
                 let item = parts.next().unwrap();
-                planner.prefer_fuel(category, item);
+                world.prefer_fuel(category, item);
             }
             "build" => {
                 let machine = parts.next().unwrap();
                 let amount: Number = parts.next().unwrap_or("1").parse().unwrap();
-                planner.build(machine, amount);
+                world.build(machine, amount);
             }
             "craft" => {
                 let item = parts.next().unwrap();
                 let amount: Number = parts.next().unwrap_or("1").parse().unwrap();
-                planner.craft(item, amount);
+                world.craft(item, amount);
             }
             "research" => {
                 let research = parts.next().unwrap();
-                planner.research(research);
+                world.research(research);
             }
             "destroy-all" => {
                 let machine = parts.next().unwrap();
-                planner.destroy_all(machine);
+                world.destroy_all(machine);
             }
             _ => panic!("unknown command {command:?}"),
         }

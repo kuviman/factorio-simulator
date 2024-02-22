@@ -77,26 +77,28 @@ pub struct Data {
     pub researches: HashMap<Arc<str>, Research>,
 }
 
-pub struct Factory {
-    pub researches: HashSet<Arc<str>>,
-    pub preferred_fuel: HashMap<FuelCategory, Item>,
-    pub machines: HashMap<Arc<str>, Number>,
+#[derive(Clone)]
+pub struct World {
+    data: Arc<Data>,
+    researches: HashSet<Arc<str>>,
+    preferred_fuel: HashMap<FuelCategory, Item>,
+    machines: HashMap<Arc<str>, Number>,
+    time: Number<Seconds>,
 }
 
-pub struct Planner {
-    data: Arc<Data>,
-    factory: Factory,
-    time: Number<Seconds>,
-    cached_recipe_for: HashMap<Item, Arc<str>>,
+#[derive(Debug, Default)]
+struct Step {
+    crafts: HashMap<Arc<str>, Number>,
+    builds: HashMap<Arc<str>, Number>,
+    single_machine_time: HashMap<Arc<str>, Number<Seconds>>,
 }
 
 #[derive(Debug, Default)]
 struct Plan {
-    crafts: HashMap<Arc<str>, Number>,
-    single_machine_time: HashMap<Arc<str>, Number<Seconds>>,
+    steps: Vec<Step>,
 }
 
-impl Planner {
+impl World {
     pub fn new(mode: RecipeMode, science_multiplier: impl Into<Number>) -> anyhow::Result<Self> {
         // running `factorio --dump-data``
         // will create `~/.factorio/script-output/data-raw-dump.json`
@@ -109,11 +111,8 @@ impl Planner {
             machines: Default::default(),
             researches: Default::default(),
         };
-        let mut factory = Factory {
-            researches: HashSet::new(),
-            machines: HashMap::new(),
-            preferred_fuel: HashMap::new(),
-        };
+
+        let mut machines = HashMap::new();
 
         for recipe in raw.recipe.values() {
             let name = recipe.name.arc();
@@ -371,7 +370,7 @@ impl Planner {
 
         {
             let name: Arc<str> = "character mining".into();
-            factory.machines.insert(name.clone(), 1.into());
+            machines.insert(name.clone(), 1.into());
             data.machines.insert(
                 name.clone(),
                 Machine {
@@ -390,7 +389,7 @@ impl Planner {
 
         {
             let name: Arc<str> = "character crafting".into();
-            factory.machines.insert(name.clone(), 1.into());
+            machines.insert(name.clone(), 1.into());
             data.machines.insert(
                 name.clone(),
                 Machine {
@@ -455,7 +454,7 @@ impl Planner {
 
         {
             let name: Arc<str> = "free".into();
-            factory.machines.insert(name.clone(), 1.into());
+            machines.insert(name.clone(), 1.into());
             data.machines.insert(
                 name.clone(),
                 Machine {
@@ -486,66 +485,123 @@ impl Planner {
 
         Ok(Self {
             data: Arc::new(data),
-            factory,
-            cached_recipe_for: Default::default(),
+            machines,
+            preferred_fuel: HashMap::new(),
+            researches: HashSet::new(),
             time: Number::new(0.0),
         })
     }
 
-    fn recipe_for(&mut self, item: impl Into<Item>) -> Arc<str> {
-        let item = item.into();
-
-        if let Item::Energy {
-            fuel_category: Some(category),
-            energy_type: EnergyType::Burner,
-        } = item
-        {
-            let fuel_item = self
-                .factory
-                .preferred_fuel
-                .get(&category)
-                .unwrap_or_else(|| panic!("No preferred fuel set for {category:?}"));
-            // TODO this format is copypasta
-            return format!("{:?} {:?} burnable fuel energy", fuel_item.name(), category).into();
-        }
-
-        self.cached_recipe_for
-            .entry(item)
-            .or_insert_with_key(|item| {
-                self.data
-                    .recipes
-                    .values()
-                    .filter(|recipe| recipe.results.contains_key(item))
-                    .filter(|recipe| {
-                        self.factory.machines.keys().any(|machine| {
-                            self.data.machines[machine]
-                                .categories
-                                .contains(&recipe.category)
-                        })
-                    })
-                    .filter(|recipe| !recipe.name.contains("barrel"))
-                    .filter(|recipe| &*recipe.name != "coal-liquefaction")
-                    .max_by_key(|recipe| {
-                        (
-                            matches!(recipe.category, Category::Free),
-                            &*recipe.name == "advanced-oil-processing",
-                        )
-                    })
-                    .map(|recipe| recipe.name.clone())
-                    .unwrap_or_else(|| panic!("Could not find recipe for {item:?}"))
-            })
-            .clone()
+    pub fn craft(&mut self, item: impl Into<Item>, amount: impl Into<Number>) {
+        self.planner().craft(item, amount).think().execute(self);
     }
 
-    fn with_plan(&mut self, f: impl FnOnce(&mut Self, &mut Plan)) {
+    pub fn build(&mut self, machine: impl Into<Item>, amount: impl Into<Number>) {
+        self.planner().build(machine, amount).think().execute(self);
+    }
+
+    pub fn prefer_fuel(&mut self, category: FuelCategory, item: impl Into<Item>) {
+        self.preferred_fuel.insert(category, item.into());
+    }
+
+    pub fn destroy_all(&mut self, machine: impl Into<Item>) {
+        let machine = machine.into();
+        self.machines.remove(machine.name());
+    }
+
+    pub fn research(&mut self, research: impl Into<Arc<str>>) {
+        let research = research.into();
+        if self.researches.contains(&research) {
+            return;
+        }
         let data = self.data.clone();
-        let mut plan = Plan::default();
-        f(self, &mut plan);
+        let research = &data.researches[&research];
+        for dependency in &research.dependencies {
+            self.research(dependency.clone());
+        }
+
+        self.planner()
+            .craft_recipe(format!("research {:?}", research.name), 1)
+            .think()
+            .execute(self);
+        self.researches.insert(research.name.clone());
+        log::info!("researched {:?}", research.name);
+    }
+
+    pub fn planner(&self) -> Planner<'_> {
+        Planner {
+            world: self,
+            build: Default::default(),
+            craft: Default::default(),
+            craft_recipe: Default::default(),
+        }
+    }
+}
+
+struct Planner<'a> {
+    world: &'a World,
+    build: HashMap<Item, Number>,
+    craft: HashMap<Item, Number>,
+    craft_recipe: HashMap<Arc<str>, Number>,
+}
+
+impl Planner<'_> {
+    pub fn build(&mut self, machine: impl Into<Item>, amount: impl Into<Number>) -> &mut Self {
+        let amount = amount.into();
+        let machine = machine.into();
+        *self.build.entry(machine).or_default() += amount;
+        self
+    }
+    pub fn craft(&mut self, item: impl Into<Item>, amount: impl Into<Number>) -> &mut Self {
+        let amount = amount.into();
+        let item = item.into();
+        *self.craft.entry(item).or_default() += amount;
+        self
+    }
+    pub fn craft_recipe(
+        &mut self,
+        recipe: impl Into<Arc<str>>,
+        amount: impl Into<Number>,
+    ) -> &mut Self {
+        let amount = amount.into();
+        let recipe = recipe.into();
+        *self.craft_recipe.entry(recipe).or_default() += amount;
+        self
+    }
+    pub fn think(&mut self) -> Plan {
+        let mut step = StepPlanner {
+            world: self.world,
+            step: Step::default(),
+        };
+        for (machine, amount) in self.build.clone() {
+            step.build(machine, amount);
+        }
+        for (item, amount) in self.craft.clone() {
+            step.craft(item, amount);
+        }
+        for (recipe, amount) in self.craft_recipe.clone() {
+            step.craft_recipe(recipe, amount);
+        }
+        Plan {
+            steps: vec![step.finalize()],
+        }
+    }
+}
+
+struct StepPlanner<'a> {
+    world: &'a World,
+    step: Step,
+}
+
+impl StepPlanner<'_> {
+    fn finalize(mut self) -> Step {
+        let data = self.world.data.clone();
         let mut done = false;
         let mut total_times = HashMap::<Arc<str>, Number<Seconds>>::new();
         while !done {
             done = true;
-            for (machine_name, single_machine_time) in std::mem::take(&mut plan.single_machine_time)
+            for (machine_name, single_machine_time) in
+                std::mem::take(&mut self.step.single_machine_time)
             {
                 *total_times.entry(machine_name.clone()).or_default() += single_machine_time;
                 let machine = &data.machines[&machine_name];
@@ -555,67 +611,83 @@ impl Planner {
                         continue;
                     }
                     done = false;
-                    self.plan_craft(energy_item.clone(), energy_amount, &mut plan);
+                    self.craft(energy_item.clone(), energy_amount);
                 }
             }
         }
-        log::debug!("PLAN:");
-        log::debug!("Crafts: {:#?}", plan.crafts);
-
-        let times: HashMap<Arc<str>, Number<Seconds>> = total_times
-            .into_iter()
-            .map(|(machine, single_machine_time)| {
-                let time =
-                    single_machine_time / self.factory.machines[&machine].convert::<Seconds>();
-                (machine, time)
-            })
-            .collect();
-        log::debug!("Machine times: {times:#?}");
-        let total_time = times.into_values().max().unwrap();
-        log::debug!("Plan total time: {total_time:?}");
-        self.time += total_time;
-        log::info!("Time now is {:?}", self.time);
+        self.step.single_machine_time = total_times;
+        self.step
     }
-
-    pub fn craft(&mut self, item: impl Into<Item>, amount: impl Into<Number>) {
+    fn build(&mut self, machine: Item, amount: Number) {
+        *self.step.builds.entry(machine.name().clone()).or_default() += amount;
+        self.craft(machine, amount);
+    }
+    fn find_recipe_for(&mut self, item: impl Into<Item>) -> Arc<str> {
         let item = item.into();
-        let amount = amount.into();
 
-        if amount.value() < 1e-5 {
-            return;
+        if let Item::Energy {
+            fuel_category: Some(category),
+            energy_type: EnergyType::Burner,
+        } = item
+        {
+            let fuel_item = self
+                .world
+                .preferred_fuel
+                .get(&category)
+                .unwrap_or_else(|| panic!("No preferred fuel set for {category:?}"));
+            // TODO this format is copypasta
+            return format!("{:?} {:?} burnable fuel energy", fuel_item.name(), category).into();
         }
 
-        self.with_plan(|this, plan| this.plan_craft(item.clone(), amount, plan));
-
-        log::info!("Crafted {amount:?} of {item:?}");
+        // TODO cache maybe?
+        self.world
+            .data
+            .recipes
+            .values()
+            .filter(|recipe| recipe.results.contains_key(&item))
+            .filter(|recipe| {
+                self.world.machines.keys().any(|machine| {
+                    self.world.data.machines[machine]
+                        .categories
+                        .contains(&recipe.category)
+                })
+            })
+            .filter(|recipe| !recipe.name.contains("barrel"))
+            .filter(|recipe| &*recipe.name != "coal-liquefaction")
+            .max_by_key(|recipe| {
+                (
+                    matches!(recipe.category, Category::Free),
+                    &*recipe.name == "advanced-oil-processing",
+                )
+            })
+            .map(|recipe| recipe.name.clone())
+            .unwrap_or_else(|| panic!("Could not find recipe for {item:?}"))
     }
-    fn plan_craft(&mut self, item: Item, amount: Number, plan: &mut Plan) {
-        let recipe = self.recipe_for(item.clone());
+    fn craft(&mut self, item: Item, amount: Number) {
+        let recipe = self.find_recipe_for(item.clone());
         log::trace!("craft {item:?} ({amount:?}) using {recipe:#?}");
 
-        let recipe = &self.data.recipes[&recipe];
+        let recipe = &self.world.data.recipes[&recipe];
         let crafts = amount / recipe.results[&item];
         // TODO: im ignoring byproducts
 
-        self.plan_craft_recipe(recipe.name.clone(), crafts, plan);
+        self.craft_recipe(recipe.name.clone(), crafts);
     }
-
-    fn plan_craft_recipe(&mut self, recipe: impl Into<Arc<str>>, crafts: Number, plan: &mut Plan) {
-        let recipe = recipe.into();
-        let data = self.data.clone();
+    fn craft_recipe(&mut self, recipe: Arc<str>, crafts: Number) {
+        let data = self.world.data.clone();
         let recipe = &data
             .recipes
             .get(&recipe)
             .unwrap_or_else(|| panic!("recipe {recipe:?} not found"));
-        *plan.crafts.entry(recipe.name.clone()).or_default() += crafts;
+        *self.step.crafts.entry(recipe.name.clone()).or_default() += crafts;
 
         for (ingredient, &ingredient_amount) in &recipe.ingredients {
-            self.plan_craft(ingredient.clone(), ingredient_amount * crafts, plan);
+            self.craft(ingredient.clone(), ingredient_amount * crafts);
         }
 
         if let Some(recipe_crafting_time) = recipe.crafting_time {
             let machines_used = self
-                .factory
+                .world
                 .machines
                 .iter()
                 .filter(|&(name, _)| data.machines[name].categories.contains(&recipe.category));
@@ -637,60 +709,45 @@ impl Planner {
 
                 let single_machine_time =
                     crafts * recipe_crafting_time / data.machines[machine_name].crafting_speed;
-                *plan
+                *self
+                    .step
                     .single_machine_time
                     .entry(machine_name.clone())
                     .or_default() += single_machine_time.convert::<Seconds>();
             }
         }
     }
+}
 
-    pub fn prefer_fuel(&mut self, category: FuelCategory, item: impl Into<Item>) {
-        self.factory.preferred_fuel.insert(category, item.into());
-    }
-
-    pub fn destroy_all(&mut self, machine: impl Into<Item>) {
-        let machine = machine.into();
-        self.factory.machines.remove(machine.name());
-        self.cached_recipe_for.clear();
-    }
-
-    pub fn build(&mut self, machine: impl Into<Item>, amount: impl Into<Number>) {
-        let amount = amount.into();
-        let machine = machine.into();
-
-        let machine_name = machine.name().clone();
-        assert!(
-            self.data.machines.contains_key(&machine_name),
-            "{machine:?} is not a machine",
-        );
-
-        self.with_plan(|this, plan| this.plan_craft(machine, amount, plan));
-
-        *self
-            .factory
-            .machines
-            .entry(machine_name.clone())
-            .or_default() += amount;
-        self.cached_recipe_for.clear();
-        log::info!("built {amount:?} of {machine_name:?}");
-    }
-
-    pub fn research(&mut self, research: impl Into<Arc<str>>) {
-        let research = research.into();
-        if self.factory.researches.contains(&research) {
-            return;
+impl Plan {
+    pub fn execute(self, world: &mut World) {
+        for step in self.steps {
+            step.execute(world);
         }
-        let data = self.data.clone();
-        let research = &data.researches[&research];
-        for dependency in &research.dependencies {
-            self.research(dependency.clone());
-        }
+    }
+}
 
-        self.with_plan(|this, plan| {
-            this.plan_craft_recipe(format!("research {:?}", research.name), 1.into(), plan);
-        });
-        self.factory.researches.insert(research.name.clone());
-        log::info!("researched {:?}", research.name);
+impl Step {
+    pub fn execute(self, world: &mut World) {
+        let times: HashMap<Arc<str>, Number<Seconds>> = self
+            .single_machine_time
+            .into_iter()
+            .map(|(machine, single_machine_time)| {
+                let time = single_machine_time / world.machines[&machine].convert::<Seconds>();
+                (machine, time)
+            })
+            .collect();
+        for (item, amount) in self.crafts {
+            log::debug!("Crafted {amount:?} of {item:?}");
+        }
+        for (machine, amount) in self.builds {
+            log::debug!("Built {amount:?} of {machine:?}");
+            *world.machines.entry(machine).or_default() += amount;
+        }
+        log::debug!("Machine times: {times:#?}");
+        let total_time = times.into_values().max().unwrap();
+        log::debug!("Step total time: {total_time:?}");
+        world.time += total_time;
+        log::info!("Time now is {:?}", world.time);
     }
 }
