@@ -1,0 +1,60 @@
+prefer-fuel chemical coal
+
+build stone-furnace
+build burner-mining-drill
+
+build stone-furnace 2
+build burner-mining-drill 2
+
+build stone-furnace 4
+build burner-mining-drill 4
+
+build stone-furnace 10
+build burner-mining-drill 10
+
+build boiler 20
+build steam-engine 40
+
+build electric-mining-drill 30
+destroy-all burner-mining-drill
+
+build lab 30
+
+research automation-2
+
+build stone-furnace 48
+build electric-mining-drill 30
+
+build assembling-machine-2 10
+
+build assembling-machine-2 20
+build assembling-machine-2 50
+
+build stone-furnace 48
+build electric-mining-drill 30
+
+build stone-furnace 48
+build electric-mining-drill 30
+
+build stone-furnace 48
+build electric-mining-drill 30
+
+build stone-furnace 48
+build electric-mining-drill 30
+
+build stone-furnace 480
+build electric-mining-drill 300
+build assembling-machine-2 100
+build assembling-machine-2 500
+build stone-furnace 500
+build electric-mining-drill 600
+
+build boiler 200
+build steam-engine 400
+
+build pumpjack 100
+build chemical-plant 100
+build assembling-machine-2 500
+build oil-refinery 50
+
+research rocket-silo

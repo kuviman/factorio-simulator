@@ -49,6 +49,10 @@ fn main() -> anyhow::Result<()> {
                 let research = parts.next().unwrap();
                 planner.research(research);
             }
+            "destroy-all" => {
+                let machine = parts.next().unwrap();
+                planner.destroy_all(machine);
+            }
             _ => panic!("unknown command {command:?}"),
         }
     }

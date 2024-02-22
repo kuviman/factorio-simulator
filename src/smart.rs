@@ -515,6 +515,7 @@ impl Planner {
                 self.data
                     .recipes
                     .values()
+                    .filter(|recipe| recipe.results.contains_key(item))
                     .filter(|recipe| {
                         self.factory.machines.keys().any(|machine| {
                             self.data.machines[machine]
@@ -522,7 +523,14 @@ impl Planner {
                                 .contains(&recipe.category)
                         })
                     })
-                    .find(|recipe| recipe.results.contains_key(item))
+                    .filter(|recipe| !recipe.name.contains("barrel"))
+                    .filter(|recipe| &*recipe.name != "coal-liquefaction")
+                    .max_by_key(|recipe| {
+                        (
+                            matches!(recipe.category, Category::Free),
+                            &*recipe.name == "advanced-oil-processing",
+                        )
+                    })
                     .map(|recipe| recipe.name.clone())
                     .unwrap_or_else(|| panic!("Could not find recipe for {item:?}"))
             })
@@ -572,6 +580,10 @@ impl Planner {
     pub fn craft(&mut self, item: impl Into<Item>, amount: impl Into<Number>) {
         let item = item.into();
         let amount = amount.into();
+
+        if amount.value() < 1e-5 {
+            return;
+        }
 
         self.with_plan(|this, plan| this.plan_craft(item.clone(), amount, plan));
 
