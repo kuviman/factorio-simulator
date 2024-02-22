@@ -3,6 +3,8 @@ use std::{
     sync::Arc,
 };
 
+use itertools::Itertools;
+
 use crate::{
     data::{EnergyType, FuelCategory, RecipeMode, Seconds, UPS},
     number::Number,
@@ -86,16 +88,16 @@ pub struct World {
     time: Number<Seconds>,
 }
 
-#[derive(Debug, Default)]
-struct Step {
+#[derive(Debug, Default, Clone)]
+struct ExecutedStep {
     crafts: HashMap<Arc<str>, Number>,
     builds: HashMap<Arc<str>, Number>,
     single_machine_time: HashMap<Arc<str>, Number<Seconds>>,
 }
 
-#[derive(Debug, Default)]
-struct Plan {
-    steps: Vec<Step>,
+#[derive(Clone, Debug, Default)]
+pub struct Plan {
+    splits: Vec<Tasks>,
 }
 
 impl World {
@@ -493,11 +495,25 @@ impl World {
     }
 
     pub fn craft(&mut self, item: impl Into<Item>, amount: impl Into<Number>) {
-        self.planner().craft(item, amount).think().execute(self);
+        self.planner()
+            .add_tasks({
+                let mut tasks = Tasks::default();
+                tasks.craft.insert(item.into(), amount.into());
+                tasks
+            })
+            .think()
+            .execute(self);
     }
 
     pub fn build(&mut self, machine: impl Into<Item>, amount: impl Into<Number>) {
-        self.planner().build(machine, amount).think().execute(self);
+        self.planner()
+            .add_tasks({
+                let mut tasks = Tasks::default();
+                tasks.build.insert(machine.into(), amount.into());
+                tasks
+            })
+            .think()
+            .execute(self);
     }
 
     pub fn prefer_fuel(&mut self, category: FuelCategory, item: impl Into<Item>) {
@@ -521,7 +537,14 @@ impl World {
         }
 
         self.planner()
-            .craft_recipe(format!("research {:?}", research.name), 1)
+            .add_tasks({
+                let mut tasks = Tasks::default();
+                tasks.craft_recipe.insert(
+                    format!("research {:?}", research.name).as_str().into(),
+                    1.into(),
+                );
+                tasks
+            })
             .think()
             .execute(self);
         self.researches.insert(research.name.clone());
@@ -531,77 +554,146 @@ impl World {
     pub fn planner(&self) -> Planner<'_> {
         Planner {
             world: self,
-            build: Default::default(),
-            craft: Default::default(),
-            craft_recipe: Default::default(),
+            splits: Vec::new(),
         }
     }
 }
 
-struct Planner<'a> {
+pub struct Planner<'a> {
     world: &'a World,
-    build: HashMap<Item, Number>,
-    craft: HashMap<Item, Number>,
-    craft_recipe: HashMap<Arc<str>, Number>,
+    splits: Vec<Tasks>,
 }
 
 impl Planner<'_> {
-    pub fn build(&mut self, machine: impl Into<Item>, amount: impl Into<Number>) -> &mut Self {
-        let amount = amount.into();
-        let machine = machine.into();
-        *self.build.entry(machine).or_default() += amount;
-        self
-    }
-    pub fn craft(&mut self, item: impl Into<Item>, amount: impl Into<Number>) -> &mut Self {
-        let amount = amount.into();
-        let item = item.into();
-        *self.craft.entry(item).or_default() += amount;
-        self
-    }
-    pub fn craft_recipe(
-        &mut self,
-        recipe: impl Into<Arc<str>>,
-        amount: impl Into<Number>,
-    ) -> &mut Self {
-        let amount = amount.into();
-        let recipe = recipe.into();
-        *self.craft_recipe.entry(recipe).or_default() += amount;
+    pub fn add_tasks(&mut self, tasks: Tasks) -> &mut Self {
+        self.splits.push(tasks);
         self
     }
     pub fn think(&mut self) -> Plan {
-        let mut step = StepPlanner {
-            world: self.world,
-            step: Step::default(),
-        };
-        for (machine, amount) in self.build.clone() {
-            step.build(machine, amount);
-        }
-        for (item, amount) in self.craft.clone() {
-            step.craft(item, amount);
-        }
-        for (recipe, amount) in self.craft_recipe.clone() {
-            step.craft_recipe(recipe, amount);
+        'improve_loop: loop {
+            let time_to_beat = {
+                let mut world = self.world.clone();
+                for tasks in &self.splits {
+                    tasks.execute(&mut world, false);
+                }
+                world.time
+            };
+            log::info!("Trying to improve {time_to_beat:?}");
+            for machine in self.world.machines.keys() {
+                let machine = &**machine;
+                for amount in [1, 2, 3, 4] {
+                    if find_recipe_for(self.world, machine).is_none() {
+                        continue;
+                    }
+                    let mut improve_task = Tasks::default();
+                    improve_task.build.insert(machine.into(), amount.into());
+                    for pos in 0..=self.splits.len() {
+                        let mut world = self.world.clone();
+                        let mut new_splits = self.splits.clone();
+                        new_splits.insert(pos, improve_task.clone());
+                        for tasks in &new_splits {
+                            tasks.execute(&mut world, false);
+                        }
+                        if world.time < time_to_beat {
+                            self.splits = new_splits;
+                            log::trace!("improved time from {time_to_beat:?} to {:?}", world.time);
+                            continue 'improve_loop;
+                        }
+                    }
+                }
+            }
+            break;
         }
         Plan {
-            steps: vec![step.finalize()],
+            splits: self.splits.clone(),
         }
     }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct Tasks {
+    pub build: HashMap<Item, Number>,
+    pub craft: HashMap<Item, Number>,
+    pub craft_recipe: HashMap<Arc<str>, Number>,
+}
+
+impl Tasks {
+    fn execute(&self, world: &mut World, log: bool) {
+        let mut planner = StepPlanner::new(world);
+        for (item, amount) in &self.craft {
+            planner.craft(item.clone(), *amount);
+        }
+        for (recipe, amount) in &self.craft_recipe {
+            planner.craft_recipe(recipe.clone(), *amount);
+        }
+        for (machine, amount) in &self.build {
+            planner.build(machine.clone(), *amount);
+        }
+        let planned = planner.finalize();
+        if log {
+            planned.log(world);
+        }
+        planned.execute(world);
+        if log {
+            log::info!("Time now is {:?}", world.time);
+        }
+    }
+}
+
+fn find_recipe_for(world: &World, item: impl Into<Item>) -> Option<Arc<str>> {
+    let item = item.into();
+
+    if let Item::Energy {
+        fuel_category: Some(category),
+        energy_type: EnergyType::Burner,
+    } = item
+    {
+        let fuel_item = world
+            .preferred_fuel
+            .get(&category)
+            .unwrap_or_else(|| panic!("No preferred fuel set for {category:?}"));
+        // TODO this format is copypasta
+        return Some(format!("{:?} {:?} burnable fuel energy", fuel_item.name(), category).into());
+    }
+
+    // TODO cache maybe?
+    world
+        .data
+        .recipes
+        .values()
+        .filter(|recipe| recipe.results.contains_key(&item))
+        .filter(|recipe| {
+            world.machines.keys().any(|machine| {
+                world.data.machines[machine]
+                    .categories
+                    .contains(&recipe.category)
+            })
+        })
+        .filter(|recipe| !recipe.name.contains("barrel"))
+        .filter(|recipe| &*recipe.name != "coal-liquefaction")
+        .max_by_key(|recipe| {
+            (
+                matches!(recipe.category, Category::Free),
+                &*recipe.name == "advanced-oil-processing",
+            )
+        })
+        .map(|recipe| recipe.name.clone())
 }
 
 struct StepPlanner<'a> {
     world: &'a World,
-    step: Step,
+    executed: ExecutedStep,
 }
 
-impl StepPlanner<'_> {
-    fn finalize(mut self) -> Step {
+impl<'a> StepPlanner<'a> {
+    fn finalize(mut self) -> ExecutedStep {
         let data = self.world.data.clone();
         let mut done = false;
         let mut total_times = HashMap::<Arc<str>, Number<Seconds>>::new();
         while !done {
             done = true;
             for (machine_name, single_machine_time) in
-                std::mem::take(&mut self.step.single_machine_time)
+                std::mem::take(&mut self.executed.single_machine_time)
             {
                 *total_times.entry(machine_name.clone()).or_default() += single_machine_time;
                 let machine = &data.machines[&machine_name];
@@ -615,56 +707,20 @@ impl StepPlanner<'_> {
                 }
             }
         }
-        self.step.single_machine_time = total_times;
-        self.step
+        self.executed.single_machine_time = total_times;
+        self.executed
     }
     fn build(&mut self, machine: Item, amount: Number) {
-        *self.step.builds.entry(machine.name().clone()).or_default() += amount;
+        *self
+            .executed
+            .builds
+            .entry(machine.name().clone())
+            .or_default() += amount;
         self.craft(machine, amount);
     }
-    fn find_recipe_for(&mut self, item: impl Into<Item>) -> Arc<str> {
-        let item = item.into();
-
-        if let Item::Energy {
-            fuel_category: Some(category),
-            energy_type: EnergyType::Burner,
-        } = item
-        {
-            let fuel_item = self
-                .world
-                .preferred_fuel
-                .get(&category)
-                .unwrap_or_else(|| panic!("No preferred fuel set for {category:?}"));
-            // TODO this format is copypasta
-            return format!("{:?} {:?} burnable fuel energy", fuel_item.name(), category).into();
-        }
-
-        // TODO cache maybe?
-        self.world
-            .data
-            .recipes
-            .values()
-            .filter(|recipe| recipe.results.contains_key(&item))
-            .filter(|recipe| {
-                self.world.machines.keys().any(|machine| {
-                    self.world.data.machines[machine]
-                        .categories
-                        .contains(&recipe.category)
-                })
-            })
-            .filter(|recipe| !recipe.name.contains("barrel"))
-            .filter(|recipe| &*recipe.name != "coal-liquefaction")
-            .max_by_key(|recipe| {
-                (
-                    matches!(recipe.category, Category::Free),
-                    &*recipe.name == "advanced-oil-processing",
-                )
-            })
-            .map(|recipe| recipe.name.clone())
-            .unwrap_or_else(|| panic!("Could not find recipe for {item:?}"))
-    }
     fn craft(&mut self, item: Item, amount: Number) {
-        let recipe = self.find_recipe_for(item.clone());
+        let recipe = find_recipe_for(self.world, item.clone())
+            .unwrap_or_else(|| panic!("Could not find recipe for {item:?}"));
         log::trace!("craft {item:?} ({amount:?}) using {recipe:#?}");
 
         let recipe = &self.world.data.recipes[&recipe];
@@ -679,7 +735,7 @@ impl StepPlanner<'_> {
             .recipes
             .get(&recipe)
             .unwrap_or_else(|| panic!("recipe {recipe:?} not found"));
-        *self.step.crafts.entry(recipe.name.clone()).or_default() += crafts;
+        *self.executed.crafts.entry(recipe.name.clone()).or_default() += crafts;
 
         for (ingredient, &ingredient_amount) in &recipe.ingredients {
             self.craft(ingredient.clone(), ingredient_amount * crafts);
@@ -710,44 +766,68 @@ impl StepPlanner<'_> {
                 let single_machine_time =
                     crafts * recipe_crafting_time / data.machines[machine_name].crafting_speed;
                 *self
-                    .step
+                    .executed
                     .single_machine_time
                     .entry(machine_name.clone())
                     .or_default() += single_machine_time.convert::<Seconds>();
             }
         }
     }
-}
 
-impl Plan {
-    pub fn execute(self, world: &mut World) {
-        for step in self.steps {
-            step.execute(world);
+    fn new(world: &'a World) -> Self {
+        Self {
+            world,
+            executed: ExecutedStep::default(),
         }
     }
 }
 
-impl Step {
+impl Plan {
     pub fn execute(self, world: &mut World) {
-        let times: HashMap<Arc<str>, Number<Seconds>> = self
-            .single_machine_time
-            .into_iter()
-            .map(|(machine, single_machine_time)| {
-                let time = single_machine_time / world.machines[&machine].convert::<Seconds>();
-                (machine, time)
+        for tasks in self.splits {
+            // log::info!("Executing {step:#?}");
+            tasks.execute(world, true);
+        }
+    }
+}
+
+impl ExecutedStep {
+    fn machine_times(&self, world: &World) -> HashMap<Arc<str>, Number<Seconds>> {
+        self.single_machine_time
+            .iter()
+            .map(|(machine, &single_machine_time)| {
+                let time = single_machine_time / world.machines[machine].convert::<Seconds>();
+                (machine.clone(), time)
             })
-            .collect();
-        for (item, amount) in self.crafts {
+            .collect()
+    }
+    pub fn execute(&self, world: &mut World) {
+        let times = self.machine_times(world);
+        for (item, amount) in &self.crafts {
             log::debug!("Crafted {amount:?} of {item:?}");
         }
-        for (machine, amount) in self.builds {
+        for (machine, &amount) in &self.builds {
             log::debug!("Built {amount:?} of {machine:?}");
-            *world.machines.entry(machine).or_default() += amount;
+            *world.machines.entry(machine.clone()).or_default() += amount;
         }
         log::debug!("Machine times: {times:#?}");
-        let total_time = times.into_values().max().unwrap();
+        let total_time = times.into_values().max().unwrap_or_default();
         log::debug!("Step total time: {total_time:?}");
         world.time += total_time;
-        log::info!("Time now is {:?}", world.time);
+        log::debug!("Time now is {:?}", world.time);
+    }
+
+    fn log(&self, world: &World) {
+        for (machine, amount) in &self.builds {
+            log::info!("Built {amount:?} of {machine:?}");
+        }
+        let mut times = self.machine_times(world).into_iter().collect_vec();
+        times.sort_by_key(|(_, time)| *time);
+        for (machine, time) in times {
+            log::info!(
+                "{:?} {machine:?} worked for {time:?}",
+                world.machines[&machine],
+            );
+        }
     }
 }

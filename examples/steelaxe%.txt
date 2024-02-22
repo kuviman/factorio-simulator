@@ -1,8 +1,9 @@
 prefer-fuel chemical coal
-build stone-furnace
-build burner-mining-drill
-build steam-engine
-build boiler
-build lab
-
+build stone-furnace 0.001
+build burner-mining-drill 0.001
+build steam-engine 0.001
+build boiler 0.001
+build lab 0.001
+build assembling-machine-1 0.001
+flush
 research steel-axe
