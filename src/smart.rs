@@ -678,6 +678,7 @@ impl Planner {
         self.with_plan(|this, plan| {
             this.plan_craft_recipe(format!("research {:?}", research.name), 1.into(), plan);
         });
+        self.factory.researches.insert(research.name.clone());
         log::info!("researched {:?}", research.name);
     }
 }
