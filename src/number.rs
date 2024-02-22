@@ -1,6 +1,6 @@
 use anyhow::anyhow;
 use serde::Deserialize;
-use std::marker::PhantomData;
+use std::{marker::PhantomData, str::FromStr};
 
 pub const MULTIPLIERS: [(char, f64); 3] =
     [('K', 1_000.0), ('M', 1_000_000.0), ('G', 1_000_000_000.0)];
@@ -52,6 +52,26 @@ pub trait NumberType {
 pub struct Number<T: NumberType = ()> {
     value: f64,
     phantom_data: PhantomData<T>,
+}
+
+impl<T: NumberType> FromStr for Number<T> {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> anyhow::Result<Self> {
+        Self::try_from(StringOrNumber::String(s.into()))
+    }
+}
+
+impl From<i64> for Number<()> {
+    fn from(value: i64) -> Self {
+        Self::new(value as f64)
+    }
+}
+
+impl From<f64> for Number<()> {
+    fn from(value: f64) -> Self {
+        Self::new(value)
+    }
 }
 
 impl<T: NumberType> Clone for Number<T> {

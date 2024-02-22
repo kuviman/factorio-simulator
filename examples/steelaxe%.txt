@@ -1,8 +1,7 @@
-use coal
-use stone-furnace
-use electric-mining-drill
-use assembling-machine-1
-use boiler
-use steam-engine
-
+prefer-fuel chemical coal
+build stone-furnace 1
+build burner-mining-drill 1
+build steam-engine 1
+build boiler
+build lab 1
 research steel-axe

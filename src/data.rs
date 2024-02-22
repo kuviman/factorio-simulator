@@ -28,6 +28,12 @@ pub enum EnergyType {
 #[serde(from = "String")]
 pub struct Name(Arc<str>);
 
+impl Name {
+    pub fn arc(&self) -> Arc<str> {
+        self.0.clone()
+    }
+}
+
 impl From<String> for Name {
     fn from(value: String) -> Self {
         Self(value.into())
@@ -219,6 +225,14 @@ pub struct Technology {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct Lab {
+    pub name: Name,
+    pub energy_usage: Number<Watts>,
+    pub energy_source: EnergySource,
+    pub researching_speed: Number,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct Boiler {
     pub name: Name,
     pub minable: Minable,
@@ -244,7 +258,7 @@ pub struct Generator {
 pub struct AssemblingMachine {
     pub name: Name,
     pub minable: Minable,
-    pub crafting_categories: HashSet<CraftCategory>,
+    pub crafting_categories: HashSet<Name>,
     pub crafting_speed: Number,
     pub energy_usage: Number<Watts>,
     pub energy_source: EnergySource,
@@ -256,31 +270,20 @@ pub struct AmountOf {
     pub amount: Number,
 }
 
-#[derive(Default, Debug, Deserialize, Copy, Clone, PartialEq, Eq, Hash)]
-#[serde(rename_all = "kebab-case")]
-pub enum CraftCategory {
-    Smelting,
-    OilProcessing,
-    Chemistry,
-    BasicCrafting,
-    #[default] // TODO confirm?
-    Crafting,
-    AdvancedCrafting,
-    CraftingWithFluid,
-    RocketBuilding,
-    Centrifuging,
-}
-
 #[derive(Debug, Deserialize)]
 pub struct Recipe {
-    #[serde(default)]
-    pub category: CraftCategory,
+    #[serde(default = "default_recipe_category")]
+    pub category: Name,
     #[serde(deserialize_with = "deserialize_item_list")]
     pub ingredients: Vec<AmountOf>,
     #[serde(alias = "result", deserialize_with = "deserialize_item_list")]
     pub results: Vec<AmountOf>,
     #[serde(default = "default_recipe_energy")]
     pub energy_required: Number,
+}
+
+fn default_recipe_category() -> Name {
+    "crafting".into()
 }
 
 fn default_recipe_energy() -> Number {
@@ -591,6 +594,13 @@ pub struct MapSettings {
     pub difficulty_settings: DifficultySettings,
 }
 
+#[derive(Debug, Deserialize, Default, Clone)]
+pub struct Character {
+    pub mining_speed: Number,
+    pub mining_categories: HashSet<Name>,
+    pub crafting_categories: HashSet<Name>,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "kebab-case", tag = "type")]
 pub enum Prototype {
@@ -607,6 +617,8 @@ pub enum Prototype {
     Technology(Technology),
     MapGenPresets(MapGenPresets),
     MapSettings(MapSettings),
+    Character(Character),
+    Lab(Lab),
     #[serde(other)]
     Other,
 }
@@ -622,9 +634,11 @@ pub struct Data {
     pub assembling_machine: HashMap<Name, AssemblingMachine>,
     pub generator: HashMap<Name, Generator>,
     pub boiler: HashMap<Name, Boiler>,
+    pub lab: HashMap<Name, Lab>,
     pub technology: HashMap<Name, Technology>,
     pub map_gen_presets: HashMap<Name, MapGenPreset>,
     pub map_settings: MapSettings,
+    pub character: Character,
     pub other: HashMap<EntityType, HashSet<Name>>,
 }
 
@@ -673,6 +687,12 @@ impl Data {
                     }
                     Prototype::MapSettings(map_settings) => {
                         data.map_settings = map_settings;
+                    }
+                    Prototype::Character(character) => {
+                        data.character = character;
+                    }
+                    Prototype::Lab(lab) => {
+                        data.lab.insert(name, lab);
                     }
                     Prototype::Other => {
                         data.other.entry(entity_type).or_default().insert(name);
