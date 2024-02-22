@@ -143,7 +143,7 @@ impl Planner {
                                 Item::Item {
                                     name: result.name.arc(),
                                 },
-                                result.amount,
+                                result.amount * recipe.result_count.unwrap_or(1.into()),
                             )
                         })
                         .collect(),

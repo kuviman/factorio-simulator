@@ -295,6 +295,7 @@ pub struct Recipe {
     pub category: Name,
     #[serde(deserialize_with = "deserialize_item_list")]
     pub ingredients: Vec<AmountOf>,
+    pub result_count: Option<Number>,
     #[serde(alias = "result", deserialize_with = "deserialize_item_list")]
     pub results: Vec<AmountOf>,
     #[serde(default = "default_recipe_energy")]
