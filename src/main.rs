@@ -17,7 +17,7 @@ fn main() -> anyhow::Result<()> {
         .parse_default_env()
         .init();
 
-    let mut world = smart::World::new(raw_data::RecipeMode::Normal)?;
+    let mut world = smart::World::new(raw_data::RecipeMode::Normal, 1.into())?;
     let mut current_tasks: Option<Tasks> = None;
 
     for line in std::io::stdin().lines() {
@@ -76,10 +76,21 @@ fn main() -> anyhow::Result<()> {
                 let research = parts.next().unwrap();
                 world.research(research);
             }
+            "reset-counts" => {
+                world.reset_counts();
+            }
             "destroy-all" => {
                 assert!(current_tasks.is_none());
                 let machine = parts.next().unwrap();
                 world.destroy_all(machine);
+            }
+            "show-counts" => {
+                log::info!("Total crafts:");
+                let mut total_crafts: Vec<_> = world.total_crafts.iter().collect();
+                total_crafts.sort_by_key(|&(_, &amount)| amount);
+                for (craft, amount) in total_crafts {
+                    log::info!("{craft:?} = {amount:?}");
+                }
             }
             _ => panic!("unknown command {command:?}"),
         }

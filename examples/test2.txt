@@ -1,0 +1,14 @@
+prefer-fuel chemical coal
+place stone-furnace
+place electric-mining-drill
+place assembling-machine-2
+place boiler
+place steam-engine
+place lab
+place chemical-plant
+place oil-refinery
+place pumpjack
+
+research automation
+
+show-counts

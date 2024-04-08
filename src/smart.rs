@@ -19,6 +19,7 @@ pub struct World {
     preferred_fuel: HashMap<FuelCategory, Item>,
     pub machines: HashMap<Arc<str>, Number>,
     time: Number<Seconds>,
+    pub total_crafts: HashMap<Arc<str>, Number>,
     total_machine_time: Number<Seconds>,
 }
 
@@ -35,8 +36,8 @@ pub struct Plan {
 }
 
 impl World {
-    pub fn new(mode: RecipeMode) -> anyhow::Result<Self> {
-        let data = Data::new(mode)?;
+    pub fn new(mode: RecipeMode, science_multiplier: Number) -> anyhow::Result<Self> {
+        let data = Data::new(mode, science_multiplier)?;
 
         let mut machines = HashMap::new();
         machines.insert(CHARACTER_MINING.into(), 1.into());
@@ -50,6 +51,7 @@ impl World {
             preferred_fuel: HashMap::new(),
             researches: HashSet::new(),
             time: Number::new(0.0),
+            total_crafts: HashMap::new(),
             total_machine_time: Number::new(0.0),
         })
     }
@@ -116,6 +118,11 @@ impl World {
             world: self,
             splits: Vec::new(),
         }
+    }
+
+    pub fn reset_counts(&mut self) {
+        self.total_machine_time = Number::new(0.0);
+        self.total_crafts.clear();
     }
 }
 
@@ -390,8 +397,9 @@ impl ExecutedStep {
     }
     pub fn execute(&self, world: &mut World) {
         let times = self.machine_times(world);
-        for (item, amount) in &self.crafts {
+        for (item, &amount) in &self.crafts {
             log::debug!("Crafted {amount:?} of {item:?}");
+            *world.total_crafts.entry(item.clone()).or_default() += amount;
         }
         for (machine, &amount) in &self.builds {
             log::debug!("Built {amount:?} of {machine:?}");

@@ -89,7 +89,7 @@ pub struct Data {
 }
 
 impl Data {
-    pub fn new(mode: RecipeMode) -> anyhow::Result<Self> {
+    pub fn new(mode: RecipeMode, science_multiplier: Number) -> anyhow::Result<Self> {
         // running `factorio --dump-data`
         // will create `~/.factorio/script-output/data-raw-dump.json`
         let raw = crate::raw_data::Data::from_reader(std::io::BufReader::new(
@@ -444,6 +444,10 @@ impl Data {
                     // TODO
                     continue;
                 }
+            } * if technology.ignore_tech_cost_multiplier {
+                Number::new(1.0)
+            } else {
+                science_multiplier
             };
             data.recipes.insert(
                 recipe_name.clone(),
