@@ -14,6 +14,7 @@ use crate::{
 #[derive(Clone)]
 pub struct World {
     data: Arc<Data>,
+    pub no_thinking: bool,
     researches: HashSet<Arc<str>>,
     preferred_fuel: HashMap<FuelCategory, Item>,
     pub machines: HashMap<Arc<str>, Number>,
@@ -43,6 +44,7 @@ impl World {
         machines.insert(FREE_STUFF.into(), 1.into());
 
         Ok(Self {
+            no_thinking: true,
             data: Arc::new(data),
             machines,
             preferred_fuel: HashMap::new(),
@@ -129,6 +131,9 @@ impl Planner<'_> {
     }
     pub fn think(&mut self) -> Plan {
         loop {
+            if self.world.no_thinking {
+                break;
+            }
             let time = |world: &World| {
                 (
                     Number::<Seconds>::new((world.time.value() / 60.0).round()),
