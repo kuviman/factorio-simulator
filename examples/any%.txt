@@ -9,5 +9,4 @@ build chemical-plant 0.01
 build oil-refinery 0.01
 build pumpjack 0.01
 build assembling-machine-2 0.01
-flush
 research rocket-silo

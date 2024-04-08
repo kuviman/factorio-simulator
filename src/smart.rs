@@ -84,8 +84,9 @@ pub struct World {
     data: Arc<Data>,
     researches: HashSet<Arc<str>>,
     preferred_fuel: HashMap<FuelCategory, Item>,
-    machines: HashMap<Arc<str>, Number>,
+    pub machines: HashMap<Arc<str>, Number>,
     time: Number<Seconds>,
+    total_machine_time: Number<Seconds>,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -491,6 +492,7 @@ impl World {
             preferred_fuel: HashMap::new(),
             researches: HashSet::new(),
             time: Number::new(0.0),
+            total_machine_time: Number::new(0.0),
         })
     }
 
@@ -570,39 +572,59 @@ impl Planner<'_> {
         self
     }
     pub fn think(&mut self) -> Plan {
-        'improve_loop: loop {
+        loop {
+            let time = |world: &World| {
+                (
+                    Number::<Seconds>::new((world.time.value() / 60.0).round()),
+                    world.total_machine_time,
+                )
+            };
             let time_to_beat = {
                 let mut world = self.world.clone();
                 for tasks in &self.splits {
                     tasks.execute(&mut world, false);
                 }
-                world.time
+                time(&world)
             };
             log::info!("Trying to improve {time_to_beat:?}");
+            let mut improvement = None;
             for machine in self.world.machines.keys() {
                 let machine = &**machine;
-                for amount in [1, 2, 3, 4] {
+                for amount in [1] {
                     if find_recipe_for(self.world, machine).is_none() {
                         continue;
                     }
                     let mut improve_task = Tasks::default();
                     improve_task.build.insert(machine.into(), amount.into());
                     for pos in 0..=self.splits.len() {
+                        // for pos in [0, self.splits.len()] {
                         let mut world = self.world.clone();
                         let mut new_splits = self.splits.clone();
                         new_splits.insert(pos, improve_task.clone());
                         for tasks in &new_splits {
                             tasks.execute(&mut world, false);
                         }
-                        if world.time < time_to_beat {
-                            self.splits = new_splits;
-                            log::trace!("improved time from {time_to_beat:?} to {:?}", world.time);
-                            continue 'improve_loop;
+                        let time = time(&world);
+                        if time < time_to_beat {
+                            improvement = std::cmp::max_by_key(
+                                improvement,
+                                Some((time, new_splits)),
+                                |imp| {
+                                    std::cmp::Reverse(
+                                        imp.as_ref().map_or(time_to_beat, |imp| imp.0),
+                                    )
+                                },
+                            );
                         }
                     }
                 }
             }
-            break;
+            if let Some((time, new_splits)) = improvement {
+                self.splits = new_splits;
+                log::trace!("improved time from {time_to_beat:?} to {time:?}");
+            } else {
+                break;
+            }
         }
         Plan {
             splits: self.splits.clone(),
@@ -811,6 +833,9 @@ impl ExecutedStep {
             *world.machines.entry(machine.clone()).or_default() += amount;
         }
         log::debug!("Machine times: {times:#?}");
+        for time in times.values().copied() {
+            world.total_machine_time += time;
+        }
         let total_time = times.into_values().max().unwrap_or_default();
         log::debug!("Step total time: {total_time:?}");
         world.time += total_time;
