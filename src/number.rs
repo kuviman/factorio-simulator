@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use anyhow::anyhow;
 use serde::Deserialize;
 use std::{marker::PhantomData, str::FromStr};

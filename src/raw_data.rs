@@ -1,11 +1,11 @@
+#![allow(dead_code)]
+
 use crate::number::{Number, NumberType};
 use std::{
     collections::{HashMap, HashSet},
-    marker::PhantomData,
     sync::Arc,
 };
 
-use anyhow::anyhow;
 use serde::Deserialize;
 
 pub const UPS: Number = Number::new(60.0);
@@ -125,6 +125,14 @@ pub struct Item {
     pub stack_size: usize,
     #[serde(flatten)]
     pub fuel: Option<Fuel>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SimpleEntity {
+    pub name: Name,
+    #[serde(default)]
+    pub count_as_rock_for_filtered_deconstruction: bool,
+    pub minable: Option<Minable>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -624,6 +632,7 @@ pub struct Character {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "kebab-case", tag = "type")]
 pub enum Prototype {
+    SimpleEntity(SimpleEntity),
     Item(Item),
     Tile(Tile),
     Fluid(Fluid),
@@ -645,6 +654,7 @@ pub enum Prototype {
 
 #[derive(Default, Debug, Deserialize)]
 pub struct Data {
+    pub simple_entity: HashMap<Name, SimpleEntity>,
     pub item: HashMap<Name, Item>,
     pub tile: HashMap<Name, Tile>,
     pub fluid: HashMap<Name, Fluid>,
@@ -669,6 +679,9 @@ impl Data {
         for (entity_type, prototypes) in raw {
             for (name, prototype) in prototypes {
                 match prototype {
+                    Prototype::SimpleEntity(simple_entity) => {
+                        data.simple_entity.insert(name, simple_entity);
+                    }
                     Prototype::Item(item) => {
                         data.item.insert(name, item);
                     }

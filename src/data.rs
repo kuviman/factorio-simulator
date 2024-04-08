@@ -11,6 +11,7 @@ use crate::{
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Category {
     BurnableFuelEnergy(FuelCategory),
+    PickaxeMining,
     Mining(Arc<str>),
     Craft(Arc<str>),
     Research,
@@ -41,6 +42,12 @@ impl Item {
         match self {
             Item::Item { name } => name,
             Item::Energy { .. } => panic!("energy item is fake item, no name for you, sorry"),
+        }
+    }
+    pub fn is(&self, test_name: &str) -> bool {
+        match self {
+            Item::Item { name } => &**name == test_name,
+            Item::Energy { .. } => false,
         }
     }
 }
@@ -94,6 +101,35 @@ impl Data {
             machines: Default::default(),
             researches: Default::default(),
         };
+
+        for simple_entity in raw.simple_entity.values() {
+            if simple_entity.count_as_rock_for_filtered_deconstruction {
+                let name: Arc<str> = format!("pickaxe mine {:?}", simple_entity.name).into();
+                // its a rock, its minable, yea
+                let minable = simple_entity.minable.as_ref().unwrap();
+                data.recipes.insert(
+                    name.clone(),
+                    Recipe {
+                        name,
+                        category: Category::PickaxeMining,
+                        ingredients: HashMap::new(),
+                        results: minable
+                            .results
+                            .iter()
+                            .map(|result| {
+                                (
+                                    Item::Item {
+                                        name: result.name.arc(),
+                                    },
+                                    result.amount,
+                                )
+                            })
+                            .collect(),
+                        crafting_time: Some(minable.mining_time),
+                    },
+                );
+            }
+        }
 
         for recipe in raw.recipe.values() {
             let name = recipe.name.arc();
@@ -349,6 +385,7 @@ impl Data {
             );
         }
 
+        // TODO: maybe merge character mining & crafting into 1 machine?
         {
             let name: Arc<str> = CHARACTER_MINING.into();
             data.machines.insert(
@@ -360,6 +397,7 @@ impl Data {
                         .mining_categories
                         .iter()
                         .map(|name| Category::Mining(name.arc()))
+                        .chain([Category::PickaxeMining])
                         .collect(),
                     energy_usage: HashMap::new(),
                     crafting_speed: raw.character.mining_speed,

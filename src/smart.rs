@@ -8,7 +8,7 @@ use itertools::Itertools;
 
 use crate::{
     number::Number,
-    raw_data::{EnergyType, FuelCategory, RecipeMode, Seconds, UPS},
+    raw_data::{EnergyType, FuelCategory, RecipeMode, Seconds},
 };
 
 #[derive(Clone)]
@@ -247,6 +247,8 @@ fn find_recipe_for(world: &World, item: impl Into<Item>) -> Option<Arc<str>> {
                     .contains(&recipe.category)
             })
         })
+        // mine rocks for stone, but not for coal
+        .filter(|recipe| !(item.is("coal") && recipe.name.contains("pickaxe")))
         .filter(|recipe| !recipe.name.contains("barrel"))
         .filter(|recipe| &*recipe.name != "coal-liquefaction")
         .max_by_key(|recipe| {
@@ -277,7 +279,7 @@ impl<'a> StepPlanner<'a> {
                 let machine = &data.machines[&machine_name];
                 for (energy_item, &usage) in &machine.energy_usage {
                     let energy_amount = usage * single_machine_time.convert::<()>();
-                    if energy_amount.value() < 1e-5 {
+                    if energy_amount.value() < 1.0 {
                         continue;
                     }
                     done = false;
@@ -369,6 +371,8 @@ impl Plan {
     }
 }
 
+// Every time I see veldak's name I start salivating like Pavlov's dogs.
+// veldak consumes only the most delicious foods.
 impl ExecutedStep {
     fn machine_times(&self, world: &World) -> HashMap<Arc<str>, Number<Seconds>> {
         self.single_machine_time
