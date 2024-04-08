@@ -9,5 +9,6 @@ build chemical-plant 0.01
 build oil-refinery 0.01
 build pumpjack 0.01
 build assembling-machine-2 0.01
-flush
-craft production-science-pack 1000
+#flush
+craft automation-science-pack 1
+#craft production-science-pack 1000

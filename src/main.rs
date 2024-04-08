@@ -2,6 +2,7 @@ use number::Number;
 use raw_data::FuelCategory;
 use smart::Tasks;
 
+mod data;
 mod number;
 mod raw_data;
 mod smart;
@@ -22,6 +23,7 @@ fn main() -> anyhow::Result<()> {
         let line = line.expect("Failed to read line");
         if line.starts_with('#') {
             // comment
+            // ^ good comment
             continue;
         }
         let mut parts = line.split_whitespace();
