@@ -6,7 +6,7 @@ use std::{
 use itertools::Itertools;
 
 use crate::{
-    data::{EnergyType, FuelCategory, RecipeMode, Seconds, UPS},
+    raw_data::{EnergyType, FuelCategory, RecipeMode, Seconds, UPS},
     number::Number,
 };
 
@@ -27,8 +27,8 @@ pub enum Item {
         name: Arc<str>,
     },
     Energy {
-        fuel_category: Option<crate::data::FuelCategory>,
-        energy_type: crate::data::EnergyType,
+        fuel_category: Option<crate::raw_data::FuelCategory>,
+        energy_type: crate::raw_data::EnergyType,
     },
 }
 
@@ -105,7 +105,7 @@ impl World {
     pub fn new(mode: RecipeMode) -> anyhow::Result<Self> {
         // running `factorio --dump-data`
         // will create `~/.factorio/script-output/data-raw-dump.json`
-        let raw = crate::data::Data::from_reader(std::io::BufReader::new(std::fs::File::open(
+        let raw = crate::raw_data::Data::from_reader(std::io::BufReader::new(std::fs::File::open(
             "data-raw-dump.json",
         )?))?;
 
@@ -172,7 +172,7 @@ impl World {
                         results: HashMap::from_iter([(
                             Item::Energy {
                                 fuel_category: Some(fuel.category),
-                                energy_type: crate::data::EnergyType::Burner,
+                                energy_type: crate::raw_data::EnergyType::Burner,
                             },
                             fuel.value.value().into(),
                         )]),
@@ -221,8 +221,8 @@ impl World {
         }
 
         fn energy_ingredients(
-            source: &crate::data::EnergySource,
-            usage: Number<crate::data::Watts>,
+            source: &crate::raw_data::EnergySource,
+            usage: Number<crate::raw_data::Watts>,
         ) -> HashMap<Item, Number> {
             let item = Item::Energy {
                 fuel_category: source.fuel_category,
@@ -425,8 +425,8 @@ impl World {
                 },
             );
             let count = match technology.unit.count {
-                crate::data::TechnologyCount::Const { count } => count,
-                crate::data::TechnologyCount::Formula { .. } => {
+                crate::raw_data::TechnologyCount::Const { count } => count,
+                crate::raw_data::TechnologyCount::Formula { .. } => {
                     // TODO
                     continue;
                 }

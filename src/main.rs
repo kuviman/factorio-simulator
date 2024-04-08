@@ -1,9 +1,9 @@
-use data::FuelCategory;
 use number::Number;
+use raw_data::FuelCategory;
 use smart::Tasks;
 
-mod data;
 mod number;
+mod raw_data;
 mod smart;
 
 fn main() -> anyhow::Result<()> {
@@ -16,7 +16,7 @@ fn main() -> anyhow::Result<()> {
         .parse_default_env()
         .init();
 
-    let mut world = smart::World::new(data::RecipeMode::Normal)?;
+    let mut world = smart::World::new(raw_data::RecipeMode::Normal)?;
 
     for line in std::io::stdin().lines() {
         let line = line.expect("Failed to read line");
