@@ -1,0 +1,13 @@
+prefer-fuel chemical coal
+build stone-furnace 0.01
+build burner-mining-drill 0.01
+build steam-engine 0.01
+build boiler 0.01
+build lab 0.01
+#build assembling-machine-1 0.01
+build chemical-plant 0.01
+build oil-refinery 0.01
+build pumpjack 0.01
+build assembling-machine-2 0.01
+flush
+craft production-science-pack 1000

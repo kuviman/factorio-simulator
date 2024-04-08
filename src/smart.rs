@@ -101,8 +101,8 @@ pub struct Plan {
 }
 
 impl World {
-    pub fn new(mode: RecipeMode, science_multiplier: impl Into<Number>) -> anyhow::Result<Self> {
-        // running `factorio --dump-data``
+    pub fn new(mode: RecipeMode) -> anyhow::Result<Self> {
+        // running `factorio --dump-data`
         // will create `~/.factorio/script-output/data-raw-dump.json`
         let raw = crate::data::Data::from_reader(std::io::BufReader::new(std::fs::File::open(
             "data-raw-dump.json",

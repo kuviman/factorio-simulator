@@ -4,7 +4,6 @@ use smart::Tasks;
 
 mod data;
 mod number;
-mod old;
 mod smart;
 
 fn main() -> anyhow::Result<()> {
@@ -17,7 +16,7 @@ fn main() -> anyhow::Result<()> {
         .parse_default_env()
         .init();
 
-    let mut world = smart::World::new(data::RecipeMode::Normal, 1)?;
+    let mut world = smart::World::new(data::RecipeMode::Normal)?;
 
     let mut tasks = Tasks::default();
     for line in std::io::stdin().lines() {
