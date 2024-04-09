@@ -87,6 +87,10 @@ impl World {
         self.machines.remove(machine.name());
     }
 
+    pub fn unresearch(&mut self, research: impl Into<Arc<str>>) {
+        self.researches.remove(&research.into());
+    }
+
     pub fn research(&mut self, research: impl Into<Arc<str>>) {
         let research = research.into();
         if self.researches.contains(&research) {

@@ -9,6 +9,9 @@ place chemical-plant
 place oil-refinery
 place pumpjack
 
-research automation
+research rocket-silo
+unresearch rocket-silo
+reset-counts
 
+research rocket-silo
 show-counts

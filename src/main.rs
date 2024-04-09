@@ -76,6 +76,11 @@ fn main() -> anyhow::Result<()> {
                 let research = parts.next().unwrap();
                 world.research(research);
             }
+            "unresearch" => {
+                assert!(current_tasks.is_none());
+                let research = parts.next().unwrap();
+                world.unresearch(research);
+            }
             "reset-counts" => {
                 world.reset_counts();
             }
